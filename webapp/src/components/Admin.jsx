@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 
 export default function Admin() {
   const [users, setUsers] = useState([]);
@@ -17,10 +17,8 @@ export default function Admin() {
   }, []);
 
   const approveUser = async (u) => {
-    // Approve in users collection
     await updateDoc(doc(db, 'users', u.uid), { approved: true });
     
-    // Auto-register to buildings/apartments in syndic_data
     if (appData) {
       let buildings = [...(appData.buildings || [])];
       let apartments = [...(appData.apartments || [])];
@@ -45,11 +43,13 @@ export default function Admin() {
   };
 
   const pendingUsers = users.filter(u => !u.approved);
+  const approvedUsers = users.filter(u => u.approved);
 
   return (
     <div className="card admin-card">
       <h2>لوحة الإدارة ⚙️</h2>
       
+      {/* --- طلبات الانضمام المعلقة --- */}
       <h3>طلبات الانضمام المعلقة ({pendingUsers.length})</h3>
       <div className="list-container">
         {pendingUsers.length === 0 ? <p>لا توجد طلبات معلقة.</p> : (
@@ -58,8 +58,26 @@ export default function Admin() {
               <div className="item-details">
                 <strong>{u.name}</strong>
                 <span>{u.building} - شقة {u.apartment}</span>
+                <span className="phone-badge">📞 {u.phone || 'غير محدد'}</span>
               </div>
               <button onClick={() => approveUser(u)} className="submit-btn" style={{marginTop: 0, padding: '8px 16px'}}>قبول</button>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* --- قائمة السكان المعتمدين --- */}
+      <h3 style={{marginTop: '24px'}}>قائمة السكان ({approvedUsers.length})</h3>
+      <div className="list-container">
+        {approvedUsers.length === 0 ? <p>لا يوجد سكان معتمدون.</p> : (
+          approvedUsers.map(u => (
+            <div key={u.uid} className="list-item">
+              <div className="item-details">
+                <strong>{u.name}</strong>
+                <span>{u.building} - شقة {u.apartment}</span>
+                <span className="phone-badge">📞 {u.phone || 'غير محدد'}</span>
+              </div>
+              <span className="role-badge">{u.role === 'admin' ? '👑 مدير' : '🏠 مقيم'}</span>
             </div>
           ))
         )}

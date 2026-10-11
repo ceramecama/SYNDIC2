@@ -439,3 +439,26 @@ input:focus {
 .chat-form input {
   flex: 1;
 }
+
+/* Admin badges */
+.phone-badge {
+  display: inline-block;
+  font-size: 13px;
+  color: #065f46;
+  background: #d1fae5;
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.role-badge {
+  display: inline-block;
+  font-size: 13px;
+  color: #1e40af;
+  background: #dbeafe;
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
