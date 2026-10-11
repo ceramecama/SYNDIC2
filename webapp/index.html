@@ -2049,8 +2049,20 @@
                 } else {
                     if (userAccount && userAccount.role === 'admin') {
                         saveData();
+                    } else {
+                        // Resident: doc doesn't exist yet, still mark as loaded
+                        if (!isLoaded) { isLoaded = true; init(); }
+                        refreshCurrentView();
                     }
                 }
+            }, err => {
+                console.error("Main data sync error:", err.code, err.message);
+                const statusIndicator = document.getElementById('sync-status');
+                if (statusIndicator) {
+                    statusIndicator.style.background = '#ef4444';
+                    statusIndicator.title = "Sync Error: " + err.message;
+                }
+                if (!isLoaded) { isLoaded = true; init(); }
             });
 
             // Chat Sync (Dedicated Collection)
@@ -3431,7 +3443,8 @@
                 senderUid: currentUserUid,
                 likes: 0,
                 dislikes: 0,
-                replies: []
+                replies: [],
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
             };
 
             // Clear input and reset button IMMEDIATELY (optimistic UI)
