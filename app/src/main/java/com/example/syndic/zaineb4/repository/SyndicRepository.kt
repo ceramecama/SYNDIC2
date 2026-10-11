@@ -312,7 +312,9 @@ class SyndicRepository {
 
     private fun startChatListening() {
         if (chatListener != null) return
-        chatListener = chatCollection.orderBy("id").limitToLast(100).addSnapshotListener { snapshot, error ->
+        // NOTE: Do NOT use orderBy("id").limitToLast() here — it requires a Firestore composite index.
+        // If the index is missing, the listener silently fails. Sort client-side instead.
+        chatListener = chatCollection.addSnapshotListener { snapshot, error ->
             if (error != null) {
                 Log.e(TAG, "Error listening to chat: ${error.message}")
                 return@addSnapshotListener
@@ -336,8 +338,10 @@ class SyndicRepository {
                             )
                         }
                     }
+                    // Sort by id ascending (oldest first) — matches web app behavior
+                    val sorted = messages.sortedBy { it.id }
                     val current = _appData.value
-                    _appData.value = current.copy(chat = messages)
+                    _appData.value = current.copy(chat = sorted)
                 } catch (e: Exception) {
                     Log.e(TAG, "Chat processing error: ${e.message}")
                 }
