@@ -2053,10 +2053,9 @@
             });
 
             // Chat Sync (Dedicated Collection)
-            // NOTE: No orderBy() here to avoid requiring a Composite Index.
-            // Sorting is done client-side in JS.
+            // Listen to all chat messages and sort client-side in JS
             if (!chatSyncListener) {
-                chatSyncListener = db.collection("syndic_chat").limit(150).onSnapshot(snap => {
+                chatSyncListener = db.collection("syndic_chat").onSnapshot(snap => {
                     const messages = snap.docs.map(doc => {
                         const d = doc.data();
                         return {
@@ -3435,7 +3434,11 @@
             if (privateCheckbox) privateCheckbox.checked = false;
 
             // Send to Firestore — onSnapshot listener will update the chat display
+            console.log("Sending chat message to syndic_chat:", message);
             db.collection("syndic_chat").doc(messageId.toString()).set(message)
+                .then(() => {
+                    console.log("Chat message sent to Firestore successfully:", messageId);
+                })
                 .catch(e => {
                     console.error("Chat send error:", e);
                     alert("تعذر إرسال الرسالة: " + (e.message || "يرجى التحقق من اتصالك بالإنترنت أو تفعيل حسابك من قبل الإدارة."));

@@ -319,12 +319,27 @@ class SyndicRepository {
             }
             if (snapshot != null) {
                 try {
-                    val messages = snapshot.toObjects(ChatMessage::class.java)
+                    val messages = snapshot.documents.mapNotNull { doc ->
+                        try {
+                            doc.toObject(ChatMessage::class.java)
+                        } catch (e: Exception) {
+                            val data = doc.data ?: return@mapNotNull null
+                            ChatMessage(
+                                id = (data["id"] as? Number)?.toLong() ?: doc.id.toLongOrNull() ?: 0L,
+                                name = data["name"] as? String ?: "",
+                                msg = data["msg"] as? String ?: "",
+                                time = data["time"] as? String ?: "",
+                                likes = (data["likes"] as? Number)?.toInt() ?: 0,
+                                dislikes = (data["dislikes"] as? Number)?.toInt() ?: 0,
+                                isPrivate = (data["isPrivate"] as? Boolean) ?: false,
+                                senderUid = data["senderUid"] as? String ?: ""
+                            )
+                        }
+                    }
                     val current = _appData.value
                     _appData.value = current.copy(chat = messages)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Chat deserialization failed, applying fix: ${e.message}")
-                    runFirebaseAutoFixForChatMessages(snapshot)
+                    Log.e(TAG, "Chat processing error: ${e.message}")
                 }
             }
         }
