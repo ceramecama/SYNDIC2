@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, query, orderBy, setDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
 
 export default function Chat({ user, userData }) {
   const [messages, setMessages] = useState([]);
@@ -9,18 +9,19 @@ export default function Chat({ user, userData }) {
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'syndic_chat'), orderBy('id', 'asc'));
+    const q = query(collection(db, 'syndic_chat'), orderBy('createdAt', 'asc'));
+
     const unsub = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => {
         const d = doc.data();
         return {
           firebaseId: doc.id,
-          ...d,
-          id: Number(d.id || doc.id)
+          ...d
         };
       });
-      msgs.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+      // Firestore already returns documents ordered by `createdAt`
       setMessages(msgs);
+
       setError(null);
     }, (err) => {
       console.error("Firestore Chat Listener Error:", err);
@@ -42,9 +43,7 @@ export default function Chat({ user, userData }) {
     setLoading(true);
     setError(null);
 
-    const id = Date.now();
     const newMsg = {
-      id: Number(id),
       name: userData?.name || (userData?.role === 'admin' ? 'Admin' : 'مجهول'),
       msg: msgText,
       time: new Date().toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' }),
@@ -52,11 +51,12 @@ export default function Chat({ user, userData }) {
       dislikes: 0,
       replies: [],
       isPrivate: false,
-      senderUid: user?.uid || ''
+      senderUid: user?.uid || '',
+      createdAt: serverTimestamp()
     };
 
     try {
-      await setDoc(doc(db, 'syndic_chat', id.toString()), newMsg);
+      await addDoc(collection(db, 'syndic_chat'), newMsg);
       input.value = '';
     } catch (err) {
       console.error("Error sending message:", err);
