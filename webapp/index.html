@@ -2102,13 +2102,17 @@
             }
 
             // Sync Users Collection (Admin only)
-            db.collection("users").onSnapshot(snap => {
-                console.log("Users snapshot received, count:", snap.size);
-                allUsers = snap.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
-                if (document.getElementById('users').classList.contains('active')) renderUsers();
-            }, err => {
-                console.error("Users sync error:", err);
-            });
+            if (userAccount && userAccount.role === "admin") {
+                db.collection("users").onSnapshot(snap => {
+                    console.log("Users snapshot received, count:", snap.size);
+                    allUsers = snap.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+                    if (document.getElementById('users').classList.contains('active')) renderUsers();
+                }, err => {
+                    console.error("Users sync error:", err);
+                });
+            } else {
+                console.log("Not admin – skipping users collection sync.");
+            }
         }
 
         function saveData() {

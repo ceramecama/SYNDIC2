@@ -9,7 +9,8 @@ export default function Chat({ user, userData }) {
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'syndic_chat'), orderBy('createdAt', 'asc'));
+    // Retrieve all chat documents without server‑side ordering. We'll sort client‑side to support messages that may lack a `createdAt` field.
+    const q = query(collection(db, 'syndic_chat'));
 
     const unsub = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => {
@@ -19,7 +20,12 @@ export default function Chat({ user, userData }) {
           ...d
         };
       });
-      // Firestore already returns documents ordered by `createdAt`
+      // Client‑side sorting: prioritize `createdAt` timestamp if present, otherwise fall back to Firestore doc ID.
+      msgs.sort((a, b) => {
+        const aTime = a.createdAt?.seconds ?? a.firebaseId;
+        const bTime = b.createdAt?.seconds ?? b.firebaseId;
+        return aTime - bTime;
+      });
       setMessages(msgs);
 
       setError(null);
