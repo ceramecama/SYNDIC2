@@ -1699,6 +1699,7 @@
         let charInstance = null;
         let lastChatCount = 0;
         let chatNotifSound = null;
+        let chatSyncError = null;
 
         // Initialize notification sound
         try {
@@ -2056,6 +2057,7 @@
             // Listen to all chat messages and sort client-side in JS
             if (!chatSyncListener) {
                 chatSyncListener = db.collection("syndic_chat").onSnapshot(snap => {
+                    chatSyncError = null;
                     const messages = snap.docs.map(doc => {
                         const d = doc.data();
                         return {
@@ -2089,6 +2091,9 @@
 
                 }, err => {
                     console.error("Chat sync error:", err.code, err.message);
+                    chatSyncError = `${err.code || 'Error'}: ${err.message || 'Permissions manquantes'}`;
+                    const commEl = document.getElementById('communication');
+                    if (commEl && commEl.classList.contains('active')) renderChat();
                 });
             }
 
@@ -3459,17 +3464,32 @@
             const currentUserUid = (userAccount && userAccount.uid) ? userAccount.uid : (currentUser ? currentUser.uid : '');
             const userIsAdmin = isAdmin();
 
+            let statusHtml = `
+                <div style="font-size: 11px; color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0; padding: 6px 10px; border-radius: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px;">
+                    <span>👤 ${userAccount ? userAccount.email : (currentUser ? currentUser.email : 'غير مسجل')} (${userAccount ? userAccount.role : 'زائر'})</span>
+                    <span>📨 الرسائل: ${(data.chat || []).length}</span>
+                </div>
+            `;
+
+            if (chatSyncError) {
+                statusHtml += `
+                    <div style="background: #fee2e2; border: 1px solid #f87171; color: #b91c1c; padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; font-weight: bold;">
+                        ⚠️ مشكل فـ استقبال الرسائل من السيرفر (Firestore):<br><span style="font-size: 12px; font-weight: normal;">${chatSyncError}</span>
+                    </div>
+                `;
+            }
+
             const filteredChat = (data.chat || []).filter(m => {
                 if (!m.isPrivate) return true;
                 return (currentUserUid && m.senderUid === currentUserUid) || userIsAdmin;
             });
 
             if (filteredChat.length === 0) {
-                c.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 30px;">لا توجد رسائل حالياً.</div>';
+                c.innerHTML = statusHtml + '<div style="text-align: center; color: #94a3b8; padding: 30px;">لا توجد رسائل حالياً.</div>';
                 return;
             }
 
-            c.innerHTML = filteredChat.map(m => {
+            c.innerHTML = statusHtml + filteredChat.map(m => {
                 const isMyMessage = currentUserUid && m.senderUid === currentUserUid;
                 const canDelete = userIsAdmin || isMyMessage;
                 return `
