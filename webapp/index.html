@@ -2132,7 +2132,7 @@
         }
 
         function saveData() {
-            if (userAccount && userAccount.role === 'admin') {
+            if (userAccount) {
                 const toSave = {
                     buildings: data.buildings.map(b => ({ ...b, id: Number(b.id) || 0 })),
                     apartments: data.apartments.map(a => {
