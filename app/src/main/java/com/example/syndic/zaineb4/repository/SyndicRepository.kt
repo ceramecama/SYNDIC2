@@ -86,6 +86,7 @@ class SyndicRepository {
             if (snapshot != null && snapshot.exists()) {
                 val account = snapshot.toObject(UserAccount::class.java)
                 _userAccount.value = account
+                startChatListening()
                 if (account?.approved == true) {
                     startListening()
                     if (account.role == "admin") {

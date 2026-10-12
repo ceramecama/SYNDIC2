@@ -134,7 +134,7 @@ service cloud.firestore {
     //
     match /syndic_payment_receipts/{receiptId} {
       allow read:  if isApproved();
-      allow write: if isAdminAndApproved();
+      allow write: if isApproved();
     }
 
 

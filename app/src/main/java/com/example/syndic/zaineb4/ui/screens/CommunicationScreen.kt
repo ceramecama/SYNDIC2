@@ -380,8 +380,8 @@ fun CommunicationScreen(viewModel: SyndicViewModel) {
                 } else {
                     val currentUid = userAccount?.uid ?: ""
                     val visibleMessages = appData.chat.filter { msg ->
-                        // Private messages are strictly for admin ONLY
-                        !msg.isPrivate || isAdmin
+                        // Private messages are strictly for admin ONLY OR message sender
+                        !msg.isPrivate || isAdmin || (currentUid.isNotBlank() && msg.senderUid == currentUid)
                     }
                     
                     LazyColumn(

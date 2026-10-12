@@ -13,6 +13,7 @@ data class ChatMessage(
     val dislikes: Int = 0,
     val replies: List<Comment> = emptyList(),
     @get:PropertyName("isPrivate")
+    @field:PropertyName("isPrivate")
     val isPrivate: Boolean = false,
     val senderUid: String = ""
 ) {
