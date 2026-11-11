@@ -50,9 +50,7 @@ service cloud.firestore {
     //    - المسؤول يكتب على أي ملف (الموافقة، ترقية المسؤول)
     //
     match /users/{userId} {
-      allow read: if isAuthenticated() && (
-        request.auth.uid == userId || isAdmin()
-      );
+      allow read: if isAuthenticated();
       allow write: if isAuthenticated() && (
         request.auth.uid == userId || isAdmin()
       );

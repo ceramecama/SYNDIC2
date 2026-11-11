@@ -99,11 +99,19 @@ class SyndicRepository {
                     stopAllUsersListening()
                 }
             } else {
-                // If doc doesn't exist, create it automatically (e.g., for legacy users)
+                // If doc doesn't exist, create it automatically (first user is admin)
                 val email = auth.currentUser?.email ?: ""
-                val newAccount = UserAccount(uid = uid, email = email, role = "resident", approved = false)
-                db.collection("users").document(uid).set(newAccount)
-                _userAccount.value = newAccount
+                db.collection("users").get().addOnCompleteListener { usersTask ->
+                    val isFirst = usersTask.isSuccessful && (usersTask.result?.isEmpty == true)
+                    val newAccount = UserAccount(
+                        uid = uid, 
+                        email = email, 
+                        role = if (isFirst) "admin" else "resident", 
+                        approved = isFirst
+                    )
+                    db.collection("users").document(uid).set(newAccount)
+                    _userAccount.value = newAccount
+                }
             }
         }
     }
@@ -492,18 +500,21 @@ class SyndicRepository {
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     val uid = task.result?.user?.uid ?: ""
-                    val newAccount = UserAccount(
-                        uid = uid, 
-                        email = email, 
-                        role = "resident", 
-                        approved = false,
-                        name = name,
-                        phone = phone,
-                        apartment = apartment,
-                        building = building
-                    )
-                    db.collection("users").document(uid).set(newAccount)
-                        .addOnCompleteListener { onResult(true, null) }
+                    db.collection("users").get().addOnCompleteListener { usersTask ->
+                        val isFirst = usersTask.isSuccessful && (usersTask.result?.isEmpty == true)
+                        val newAccount = UserAccount(
+                            uid = uid, 
+                            email = email, 
+                            role = if (isFirst) "admin" else "resident", 
+                            approved = isFirst,
+                            name = name,
+                            phone = phone,
+                            apartment = apartment,
+                            building = building
+                        )
+                        db.collection("users").document(uid).set(newAccount)
+                            .addOnCompleteListener { onResult(true, null) }
+                    }
                 } else {
                     onResult(false, task.exception?.message)
                 }

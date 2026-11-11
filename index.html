@@ -1529,11 +1529,21 @@
             try {
                 const cred = await firebase.auth().createUserWithEmailAndPassword(email, pwd);
                 const uid = cred.user.uid;
+
+                // أول مستخدم يسجل في النظام يكون تلقائياً مسؤولاً ومفعلاً (Admin)
+                let isFirstUser = false;
+                try {
+                    const snap = await db.collection("users").get();
+                    if (snap.empty) isFirstUser = true;
+                } catch(e) {
+                    isFirstUser = true;
+                }
+
                 const newAcc = {
                     uid: uid,
                     email: email,
-                    role: 'resident',
-                    approved: false,
+                    role: isFirstUser ? 'admin' : 'resident',
+                    approved: isFirstUser ? true : false,
                     name: name,
                     phone: phone,
                     building: building,
@@ -1638,8 +1648,20 @@
                         }
                     } else {
                         console.log("User doc missing, creating one...");
-                        // Create initial user doc if missing
-                        const newAcc = { uid: user.uid, email: user.email, role: 'resident', approved: false };
+                        // Create initial user doc if missing (first user is admin)
+                        let isFirstUser = false;
+                        try {
+                            const snap = await db.collection("users").get();
+                            if (snap.empty) isFirstUser = true;
+                        } catch(e) {
+                            isFirstUser = true;
+                        }
+                        const newAcc = { 
+                            uid: user.uid, 
+                            email: user.email, 
+                            role: isFirstUser ? 'admin' : 'resident', 
+                            approved: isFirstUser ? true : false 
+                        };
                         db.collection("users").doc(user.uid).set(newAcc);
                     }
                 }, err => {
