@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from './firebase.js';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, collection } from 'firebase/firestore';
 import './index.css';
 
 import Expenses from './components/Expenses';
@@ -54,6 +54,14 @@ function App() {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const newUser = userCredential.user;
         
+        let isFirstUser = false;
+        try {
+          const usersSnap = await getDocs(collection(db, 'users'));
+          if (usersSnap.empty) isFirstUser = true;
+        } catch (e) {
+          isFirstUser = true;
+        }
+
         await setDoc(doc(db, 'users', newUser.uid), {
           uid: newUser.uid,
           email,
@@ -61,8 +69,8 @@ function App() {
           phone,
           building,
           apartment,
-          role: 'resident',
-          approved: false
+          role: isFirstUser ? 'admin' : 'resident',
+          approved: isFirstUser ? true : false
         });
         setSuccess("تم إنشاء الحساب بنجاح! يرجى انتظار الموافقة.");
       } else {
