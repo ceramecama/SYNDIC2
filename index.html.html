@@ -2997,6 +2997,64 @@
         }
 
         // ACTIONS
+        function renameItem(id, type) {
+            if (type === 'bld') {
+                const b = data.buildings.find(item => String(item.id) === String(id));
+                if (!b) return;
+                const newName = prompt(t('rename_bld') || "تعديل اسم العمارة:", b.name);
+                if (!newName || !newName.trim()) return;
+                b.name = newName.trim();
+                saveData();
+                renderBuildings();
+            } else if (type === 'apt') {
+                const a = data.apartments.find(item => String(item.id) === String(id));
+                if (!a) return;
+                const newName = prompt(t('rename_apt') || "تعديل رقم/اسم الشقة:", a.name);
+                if (!newName || !newName.trim()) return;
+                a.name = newName.trim();
+                saveData();
+                renderApartments();
+            }
+        }
+
+        function deleteItem(id, type) {
+            if (type === 'bld') {
+                const b = data.buildings.find(item => String(item.id) === String(id));
+                if (!b) return;
+                if (!confirm(`هل أنت متأكد من حذف العمارة "${b.name}" مع جميع شققها ومصاريفها؟`)) return;
+                // Delete building
+                data.buildings = data.buildings.filter(item => String(item.id) !== String(id));
+                // Delete apartments in this building
+                const aptsToDelete = data.apartments.filter(item => String(item.buildingId) === String(id));
+                const aptIdsToDelete = aptsToDelete.map(item => String(item.id));
+                data.apartments = data.apartments.filter(item => String(item.buildingId) !== String(id));
+                // Delete payments for these apartments
+                Object.keys(data.payments || {}).forEach(k => {
+                    const aptIdInKey = k.split('_')[0];
+                    if (aptIdsToDelete.includes(aptIdInKey)) {
+                        delete data.payments[k];
+                    }
+                });
+                saveData();
+                renderBuildings();
+            } else if (type === 'apt') {
+                const a = data.apartments.find(item => String(item.id) === String(id));
+                if (!a) return;
+                if (!confirm(`هل أنت متأكد من حذف الشقة "${a.name}"؟`)) return;
+                // Delete apartment
+                data.apartments = data.apartments.filter(item => String(item.id) !== String(id));
+                // Delete payments for this apartment
+                Object.keys(data.payments || {}).forEach(k => {
+                    const aptIdInKey = k.split('_')[0];
+                    if (aptIdInKey === String(id)) {
+                        delete data.payments[k];
+                    }
+                });
+                saveData();
+                renderApartments();
+            }
+        }
+
         function addBuilding() {
             let name = prompt("Building Name:");
             if (!name) return;
