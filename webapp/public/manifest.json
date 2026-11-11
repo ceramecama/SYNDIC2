@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "SYNDIC BELLOUZOU 4 السانديك",
-  "short_name": "BELLOUZOU 4",
-  "description": "تطبيق تسيير السانديك وإدارة الإقامة SYNDIC BELLOUZOU 4",
+  "name": "SYNDIC 1 السانديك",
+  "short_name": "SYNDIC 1",
+  "description": "تطبيق تسيير السانديك وإدارة الإقامة SYNDIC 1",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
