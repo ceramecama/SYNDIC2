@@ -1637,7 +1637,7 @@
             console.log("Auth state changed, user:", user ? user.email : "none");
             if (user) {
                 // Fetch user doc - FIXED: .doc() instead of .document()
-                db.collection("users").doc(user.uid).onSnapshot(doc => {
+                db.collection("users").doc(user.uid).onSnapshot(async doc => {
                     console.log("User doc snapshot received, exists:", doc.exists);
                     if (doc.exists) {
                         userAccount = doc.data();
@@ -1662,7 +1662,7 @@
                             role: isFirstUser ? 'admin' : 'resident', 
                             approved: isFirstUser ? true : false 
                         };
-                        db.collection("users").doc(user.uid).set(newAcc);
+                        await db.collection("users").doc(user.uid).set(newAcc);
                     }
                 }, err => {
                     console.error("User doc listener error:", err);
