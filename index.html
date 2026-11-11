@@ -1666,6 +1666,7 @@
                     }
                 }, err => {
                     console.error("User doc listener error:", err);
+                    updateUIShowHide();
                 });
             } else {
                 userAccount = null;
@@ -3388,6 +3389,15 @@
         }
 
         window.onload = () => {
+            // Safety timeout: ensure loading screen is hidden within 3 seconds regardless of network
+            setTimeout(() => {
+                const loading = document.getElementById('loadingScreen');
+                if (loading && loading.style.display !== 'none' && !userAccount) {
+                    console.warn("Loading screen safety timeout triggered.");
+                    updateUIShowHide();
+                }
+            }, 3000);
+
             if (!localStorage.getItem('syndicLocalData')) localStorage.setItem('syndicLocalData', JSON.stringify(data));
             // Register Service Worker for PWA / Shortcut support
             if ('serviceWorker' in navigator) {
