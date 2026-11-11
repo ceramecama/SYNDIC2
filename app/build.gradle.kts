@@ -10,7 +10,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.syndic.zaineb4"
+        applicationId = "com.example.syndic1"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
