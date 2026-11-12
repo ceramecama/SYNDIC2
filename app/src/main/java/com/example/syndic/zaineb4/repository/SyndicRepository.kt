@@ -29,7 +29,7 @@ class SyndicRepository {
 
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
-    private val mainDocRef = db.collection("syndic_data").document("zaineb4")
+    private val mainDocRef = db.collection("syndic_data").document("syndic1")
     private val receiptsCollection = db.collection("syndic_receipts")
     private val paymentReceiptsCollection = db.collection("syndic_payment_receipts")
     private val announcementsImagesCollection = db.collection("syndic_announcements_images")

@@ -54,9 +54,11 @@ service cloud.firestore {
     //
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && (
-        request.auth.uid == userId || isAdmin()
-      );
+      // المستخدم يكتب على ملفه الشخصي (تسجيل، تحديث بيانات)
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+      // الأدمين يكتب على أي ملف (قبول، رفض، ترقية) — بدون شرط approved
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
 
