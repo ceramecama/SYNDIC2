@@ -22,8 +22,11 @@ service cloud.firestore {
     }
 
     // هل المستخدم مسؤول (admin)؟
+    // نستخدم get() مباشرة لتجنب فشل userExists() على حسابات خاصة
     function isAdmin() {
-      return isAuthenticated() && userExists() && getUserData().role == "admin";
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
     }
 
     // هل المستخدم معتمد من المسؤول؟

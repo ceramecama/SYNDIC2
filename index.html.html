@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 
 <head>
@@ -2112,7 +2112,7 @@
             if (mainSyncListener) return;
 
             // Main Data (Buildings, Apartments, Expenses)
-            mainSyncListener = db.collection("syndic_data").doc("zaineb4").onSnapshot(doc => {
+            mainSyncListener = db.collection("syndic_data").doc("syndic1").onSnapshot(doc => {
                 const statusIndicator = document.getElementById('sync-status');
                 if (statusIndicator) {
                     statusIndicator.style.background = '#10b981';
@@ -2209,7 +2209,7 @@
                     }
                 });
 
-                db.collection("syndic_data").doc("zaineb4").set(toSave, { merge: true })
+                db.collection("syndic_data").doc("syndic1").set(toSave, { merge: true })
                     .then(() => {
                         console.log("Firestore Save Success");
                     })
@@ -2266,7 +2266,7 @@
             console.log("Starting data cleanup...");
 
             // 1. Main Data
-            const mainDoc = await db.collection("syndic_data").doc("zaineb4").get();
+            const mainDoc = await db.collection("syndic_data").doc("syndic1").get();
             if (mainDoc.exists) {
                 const d = mainDoc.data();
                 const fixed = {
@@ -2275,7 +2275,7 @@
                     expenses: (d.expenses || []).map(e => ({ ...e, id: Number(e.id) })),
                     payments: d.payments
                 };
-                await db.collection("syndic_data").doc("zaineb4").set(fixed);
+                await db.collection("syndic_data").doc("syndic1").set(fixed);
                 console.log("Main data fixed.");
             }
 
@@ -3780,18 +3780,36 @@
         }
 
         async function approveUser(uid) {
-            if (confirm("هل أنت متأكد من الموافقة على هذا المستخدم؟")) {
+            if (!confirm("هل أنت متأكد من الموافقة على هذا المستخدم؟")) return;
+            try {
                 await db.collection("users").doc(uid).update({ approved: true });
+                alert("✅ تمت الموافقة على المستخدم بنجاح!");
+                renderAdminPanel();
+            } catch (err) {
+                console.error("approveUser error:", err);
+                alert("❌ فشلت العملية: " + err.message + "\n\nتأكد من أن حسابك مسجل كـ admin في Firebase.");
             }
         }
         async function makeAdmin(uid) {
-            if (confirm("هل أنت متأكد من جعل هذا المستخدم مسؤولاً؟")) {
-                await db.collection("users").doc(uid).update({ role: 'admin' });
+            if (!confirm("هل أنت متأكد من جعل هذا المستخدم مسؤولاً؟")) return;
+            try {
+                await db.collection("users").doc(uid).update({ role: 'admin', approved: true });
+                alert("✅ تم تعيين المستخدم كمسؤول!");
+                renderAdminPanel();
+            } catch (err) {
+                console.error("makeAdmin error:", err);
+                alert("❌ فشلت العملية: " + err.message);
             }
         }
         async function deleteUserRow(uid) {
-            if (confirm("هل أنت متأكد من حذف هذا المستخدم؟")) {
+            if (!confirm("هل أنت متأكد من حذف هذا المستخدم؟")) return;
+            try {
                 await db.collection("users").doc(uid).delete();
+                alert("✅ تم حذف المستخدم.");
+                renderAdminPanel();
+            } catch (err) {
+                console.error("deleteUserRow error:", err);
+                alert("❌ فشل الحذف: " + err.message);
             }
         }
         function applyLanguage() {
@@ -3876,7 +3894,7 @@
             if (path.includes('/Syndic-New')) {
                 return '/Syndic-New/syndic1.apk';
             }
-            if (path.includes('/syndic-bellouzou4') || path.includes('/Syndic-Bellouzou4')) {
+            if (path.includes('/SYNDIC2') || path.includes('/syndic2')) {
                 return path.substring(0, path.lastIndexOf('/')) + '/syndic1.apk';
             }
             return './syndic1.apk';
@@ -4026,3 +4044,4 @@
 </body>
 
 </html>
+
