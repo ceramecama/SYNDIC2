@@ -6,61 +6,44 @@ service cloud.firestore {
     //  SYNDIC 1 - Firestore Security Rules
     // ════════════════════════════════════════════════════════════
 
-    // Helper: check if the current user is admin
-    function isAdmin() {
-      return request.auth != null
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-
     // Helper: user is authenticated
     function isAuth() {
       return request.auth != null;
     }
 
+    // Helper: check if the current user is admin
+    function isAdmin() {
+      return isAuth()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
     // ──── Users collection ────
     match /users/{userId} {
-      // Any authenticated user can read all user profiles
       allow read: if isAuth();
-
-      // A user can create their own doc (registration)
-      allow create: if isAuth() && request.auth.uid == userId;
-
-      // A user can update their own doc BUT cannot change role to admin
-      allow update: if isAuth() && request.auth.uid == userId
-        && (!('role' in request.resource.data) || request.resource.data.role == resource.data.role);
-
+      // User can create/update their OWN doc
+      allow create, update: if isAuth() && request.auth.uid == userId;
       // Admin can do everything on any user doc
       allow create, update, delete: if isAdmin();
     }
 
     // ──── Chat messages ────
     match /syndic_chat/{messageId} {
-      // All authenticated users can read chat
       allow read: if isAuth();
-
-      // All authenticated users can create chat messages
       allow create: if isAuth();
-
-      // Only admin or message sender can update/delete
       allow update, delete: if isAuth()
         && (resource.data.senderUid == request.auth.uid || isAdmin());
     }
 
     // ──── Syndic main data (apartments, expenses, etc.) ────
     match /syndic_data/{docId} {
-      // All authenticated users can read
       allow read: if isAuth();
-
-      // Only admin can write
       allow write: if isAdmin();
     }
 
     // ──── Announcements ────
     match /syndic_announcements/{annId} {
-      // All authenticated users can read
       allow read: if isAuth();
-
-      // Only admin can create/update/delete announcements
       allow write: if isAdmin();
     }
 
