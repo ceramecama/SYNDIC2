@@ -1861,7 +1861,7 @@
                     uid: uid,
                     email: email,
                     role: isFirstUser ? 'admin' : 'resident',
-                    approved: true,
+                    approved: isFirstUser ? true : false,
                     name: name,
                     phone: phone,
                     building: building,
@@ -1962,7 +1962,7 @@
                         userAccount = doc.data();
                         console.log("User role:", userAccount.role, "Approved:", userAccount.approved);
                         updateUIShowHide();
-                        if (userAccount.approved !== false) {
+                        if (userAccount.role === 'admin' || userAccount.approved) {
                             startDataSync();
                         }
                     } else {
@@ -1978,7 +1978,7 @@
                             uid: user.uid, 
                             email: user.email, 
                             role: isFirstUser ? 'admin' : 'resident', 
-                            approved: true 
+                            approved: isFirstUser ? true : false 
                         };
                         await db.collection("users").doc(user.uid).set(newAcc);
                     }
@@ -2016,7 +2016,7 @@
                 pending.style.display = 'none';
                 main.style.display = 'none';
                 navbar.style.display = 'none';
-            } else if (userAccount.approved === false && userAccount.role !== 'admin') {
+            } else if (userAccount.role !== 'admin' && !userAccount.approved) {
                 login.style.display = 'none';
                 pending.style.display = 'flex';
                 main.style.display = 'none';
@@ -3800,8 +3800,8 @@
             }
             container.innerHTML = '';
 
-            const pending = allUsers.filter(u => u.approved === false);
-            const approved = allUsers.filter(u => u.approved !== false);
+            const pending = allUsers.filter(u => u.role !== 'admin' && !u.approved);
+            const approved = allUsers.filter(u => u.role === 'admin' || u.approved);
 
             let html = '';
             if (pending.length > 0) {
@@ -3812,16 +3812,17 @@
                 html += `<h3 style="color: var(--primary); margin-top: 30px; margin-bottom: 15px;">المستخدمون المعتمدون (${approved.length})</h3>`;
                 approved.forEach(u => html += createUserCard(u, false));
             }
-            container.innerHTML = html || '<p>لا يوجد مستخدمون حاليا.</p>';
+            container.innerHTML = html || '<p style="text-align:center;padding:20px;color:#64748b;">لا يوجد مستخدمون حاليا.</p>';
         }
 
         function createUserCard(u, isPending) {
+            const currentAuthUid = firebase.auth().currentUser ? firebase.auth().currentUser.uid : (userAccount ? userAccount.uid : '');
             const isAdm = u.role === 'admin';
-            const cleanPhone = u.phone ? u.phone.replace(/[^0-9+]/g, '') : '';
+            const cleanPhone = u.phone ? String(u.phone).replace(/[^0-9+]/g, '') : '';
             return `
                 <div class="card" style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; padding: 15px; flex-wrap: wrap; gap: 10px;">
                     <div>
-                        <div style="font-weight: bold; font-size: 16px;">${u.name || '---'} <span style="font-size: 13px; color: #64748b; font-weight: normal;">(${u.email})</span></div>
+                        <div style="font-weight: bold; font-size: 16px;">${u.name || '---'} <span style="font-size: 13px; color: #64748b; font-weight: normal;">(${u.email || ''})</span></div>
                         <div style="color: var(--secondary); font-size: 14px; margin-top: 3px;">
                             🏢 ${u.building || '-'} | 🚪 ${u.apartment || '-'}
                             ${u.phone ? ` | 📞 <a href="tel:${cleanPhone}" style="color: var(--secondary); text-decoration: none; font-weight: bold;">${u.phone}</a> <a href="https://api.whatsapp.com/send?phone=${cleanPhone}" target="_blank" style="text-decoration: none; margin-left: 5px;" title="WhatsApp">💬</a>` : ''}
@@ -3831,7 +3832,7 @@
                     <div style="display: flex; gap: 10px;">
                         ${isPending ? `<button class="btn btn-primary btn-sm" onclick="approveUser('${u.uid}')">${t('btn_approve')}</button>` : ''}
                         ${(!isAdm && !isPending) ? `<button class="btn btn-secondary btn-sm" onclick="makeAdmin('${u.uid}')">${t('btn_make_admin')}</button>` : ''}
-                        ${(isAdm && u.uid !== (currentUser ? currentUser.uid : '')) ? `<button class="btn btn-sm" style="background:#f59e0b;color:#fff;" onclick="removeAdmin('${u.uid}')">${t('btn_remove_admin')}</button>` : ''}
+                        ${(isAdm && u.uid !== currentAuthUid) ? `<button class="btn btn-sm" style="background:#f59e0b;color:#fff;" onclick="removeAdmin('${u.uid}')">${t('btn_remove_admin')}</button>` : ''}
                         <button class="btn btn-danger btn-sm" onclick="deleteUserRow('${u.uid}')">${t('btn_delete_user')}</button>
                     </div>
                 </div>
@@ -3843,6 +3844,8 @@
             try {
                 await db.collection("users").doc(uid).update({ approved: true });
                 alert("✅ تمت الموافقة على المستخدم بنجاح!");
+                const target = allUsers.find(u => u.uid === uid);
+                if (target) target.approved = true;
                 renderUsers();
             } catch (err) {
                 console.error("approveUser error:", err);
@@ -3854,6 +3857,8 @@
             try {
                 await db.collection("users").doc(uid).update({ role: 'admin', approved: true });
                 alert("✅ تم تعيين المستخدم كمسؤول!");
+                const target = allUsers.find(u => u.uid === uid);
+                if (target) { target.role = 'admin'; target.approved = true; }
                 renderUsers();
             } catch (err) {
                 console.error("makeAdmin error:", err);
@@ -3865,6 +3870,8 @@
             try {
                 await db.collection("users").doc(uid).update({ role: 'resident' });
                 alert("✅ تم إزالة صلاحية المسؤول!");
+                const target = allUsers.find(u => u.uid === uid);
+                if (target) target.role = 'resident';
                 renderUsers();
             } catch (err) {
                 console.error("removeAdmin error:", err);
@@ -3876,6 +3883,7 @@
             try {
                 await db.collection("users").doc(uid).delete();
                 alert("✅ تم حذف المستخدم.");
+                allUsers = allUsers.filter(u => u.uid !== uid);
                 renderUsers();
             } catch (err) {
                 console.error("deleteUserRow error:", err);

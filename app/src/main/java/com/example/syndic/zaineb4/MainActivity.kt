@@ -84,12 +84,12 @@ fun SyndicApp(repository: SyndicRepository) {
 
     androidx.compose.runtime.LaunchedEffect(isAuthenticated, userAccount) {
         if (isAuthenticated) {
-            if (userAccount != null && userAccount?.approved != false) {
+            if (userAccount != null && (userAccount?.role == "admin" || userAccount?.approved == true)) {
                 navController.navigate(Screen.Dashboard.route) {
                     popUpTo(Screen.Login.route) { inclusive = true }
                     popUpTo(Screen.PendingApproval.route) { inclusive = true }
                 }
-            } else if (userAccount != null && userAccount?.approved == false && userAccount?.role != "admin") {
+            } else if (userAccount != null && userAccount?.role != "admin" && userAccount?.approved != true) {
                 navController.navigate(Screen.PendingApproval.route) {
                     popUpTo(Screen.Login.route) { inclusive = true }
                 }
@@ -104,7 +104,7 @@ fun SyndicApp(repository: SyndicRepository) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
-            if (isAuthenticated && userAccount?.approved != false) {
+            if (isAuthenticated && (userAccount?.role == "admin" || userAccount?.approved == true)) {
                 BottomNavBar(navController = navController)
             }
         }
@@ -112,7 +112,7 @@ fun SyndicApp(repository: SyndicRepository) {
         NavHost(
             navController = navController,
             startDestination = if (isAuthenticated) {
-                if (userAccount?.approved != false) Screen.Dashboard.route else Screen.PendingApproval.route
+                if (userAccount?.role == "admin" || userAccount?.approved == true) Screen.Dashboard.route else Screen.PendingApproval.route
             } else Screen.Login.route,
             modifier = Modifier.padding(innerPadding)
         ) {

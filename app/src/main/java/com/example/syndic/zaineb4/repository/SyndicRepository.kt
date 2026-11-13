@@ -107,7 +107,7 @@ class SyndicRepository {
                         uid = uid, 
                         email = email, 
                         role = if (isFirst) "admin" else "resident", 
-                        approved = true
+                        approved = isFirst
                     )
                     db.collection("users").document(uid).set(newAccount)
                     _userAccount.value = newAccount
@@ -547,7 +547,7 @@ class SyndicRepository {
                             uid = uid, 
                             email = email, 
                             role = if (isFirst) "admin" else "resident", 
-                            approved = true,
+                            approved = isFirst,
                             name = name,
                             phone = phone,
                             apartment = apartment,
