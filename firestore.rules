@@ -3,14 +3,102 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ════════════════════════════════════════════════════════════
-    //  قواعد الأمان لتطبيق السنديك (SYNDIC 1)
-    // ════════════════════════════════════════════════════════════
-    //  أي مستخدم مسجل الدخول (Authenticated) له حق القراءة والكتابة.
-    //  التحكم في الأدوار والواجهات (Admin / Resident) يتم عبر التطبيق.
+    //  دوال التحقق المساعدة — Helper Functions
     // ════════════════════════════════════════════════════════════
 
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+    // هل المستخدم مسجل الدخول؟
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // جلب وثيقة المستخدم إذا كانت موجودة
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // هل المستخدم مسؤول (Admin)؟
+    function isAdmin() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        userDoc().data.role == "admin";
+    }
+
+    // هل المستخدم معتمد (Approved)؟
+    function isApproved() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        userDoc().data.approved == true;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  1. المستخدمين — /users/{userId}
+    // ════════════════════════════════════════════════════════════
+    //  - القراءة: مسموحة لأي مستخدم مسجل لرؤية قائمة الجيران والإدارة
+    //  - الإنشاء والتعديل: مسموح لصاحب الحساب، أو للمسؤول (للموافقة وتغيير الصلاحيات)
+    //  - الحذف: مسموح للمسؤول أو صاحب الحساب
+    // ════════════════════════════════════════════════════════════
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && (
+        request.auth.uid == userId || isAdmin() || !exists(/databases/$(database)/documents/users/$(userId))
+      );
+      allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  2. البيانات الرئيسية — /syndic_data/**
+    //  (العمارات، الشقق، المصاريف، الصندوق)
+    // ════════════════════════════════════════════════════════════
+    //  - القراءة والكتابة: متاحة لأي مستخدم مسجل معتمد، أو للمسؤول،
+    //    مع السماح بالقراءة لجميع المسجلين لتهيئة التطبيق بسلاسة
+    // ════════════════════════════════════════════════════════════
+    match /syndic_data/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  3. الدردشة والمحادثات — /syndic_chat/{messageId}
+    // ════════════════════════════════════════════════════════════
+    //  - القراءة: لجميع المسجلين لرؤية الرسائل العامة
+    //  - الإرسال: مسموح لأي مستخدم مسجل
+    //  - التعديل (الإعجاب، الردود): مسموح للمسجلين
+    //  - الحذف: لصاحب الرسالة أو المسؤول
+    // ════════════════════════════════════════════════════════════
+    match /syndic_chat/{messageId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && (
+        isAdmin() || resource.data.senderUid == request.auth.uid
+      );
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  4. الإعلانات — /syndic_announcements/{announcementId}
+    // ════════════════════════════════════════════════════════════
+    //  - القراءة: لجميع المسجلين
+    //  - النشر والحذف: متاح للمسؤول وللمستخدمين المعتمدين
+    //  - التعليقات: مسموحة لجميع المسجلين
+    // ════════════════════════════════════════════════════════════
+    match /syndic_announcements/{announcementId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated();
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  5. الوصولات والمرفقات — Receipts & Media
+    // ════════════════════════════════════════════════════════════
+    match /syndic_receipts/{receiptId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /syndic_payment_receipts/{receiptId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /syndic_announcements_images/{imageId} {
+      allow read, write: if isAuthenticated();
     }
 
   }
