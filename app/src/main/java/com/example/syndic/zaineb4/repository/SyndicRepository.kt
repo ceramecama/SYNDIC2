@@ -242,7 +242,7 @@ class SyndicRepository {
 
     fun startListening() {
         if (auth.currentUser == null) return
-        if (_userAccount.value?.approved != true) return
+        if (_userAccount.value?.approved == false) return
 
         if (listenerRegistration == null) {
             listenerRegistration = mainDocRef.addSnapshotListener { snapshot, error ->
@@ -254,6 +254,23 @@ class SyndicRepository {
                 if (snapshot != null && snapshot.exists()) {
                     try {
                         val data = snapshot.toObject(AppData::class.java) ?: AppData()
+                        if (data.buildings.isEmpty() && data.apartments.isEmpty()) {
+                            // Check legacy doc "zaineb4"
+                            db.collection("syndic_data").document("zaineb4").get().addOnSuccessListener { legSnap ->
+                                if (legSnap != null && legSnap.exists()) {
+                                    val legData = legSnap.toObject(AppData::class.java) ?: AppData()
+                                    if (legData.buildings.isNotEmpty() || legData.apartments.isNotEmpty()) {
+                                        val current = _appData.value
+                                        _appData.value = legData.copy(
+                                            chat = current.chat,
+                                            announcements = current.announcements
+                                        )
+                                        mainDocRef.set(legData)
+                                        return@addOnSuccessListener
+                                    }
+                                }
+                            }
+                        }
                         val current = _appData.value
                         _appData.value = data.copy(
                             chat = current.chat,
@@ -265,9 +282,26 @@ class SyndicRepository {
                         runFirebaseAutoFixForStringIds()
                     }
                 } else {
-                    // Create initial document if it doesn't exist
-                    Log.d(TAG, "No data found, creating initial doc")
-                    mainDocRef.set(AppData())
+                    // Check legacy doc "zaineb4" before creating empty doc
+                    db.collection("syndic_data").document("zaineb4").get().addOnSuccessListener { legSnap ->
+                        if (legSnap != null && legSnap.exists()) {
+                            val legData = legSnap.toObject(AppData::class.java) ?: AppData()
+                            if (legData.buildings.isNotEmpty() || legData.apartments.isNotEmpty()) {
+                                val current = _appData.value
+                                _appData.value = legData.copy(
+                                    chat = current.chat,
+                                    announcements = current.announcements
+                                )
+                                mainDocRef.set(legData)
+                                return@addOnSuccessListener
+                            }
+                        }
+                        Log.d(TAG, "No data found, creating initial doc")
+                        mainDocRef.set(AppData())
+                    }.addOnFailureListener {
+                        Log.d(TAG, "No data found, creating initial doc")
+                        mainDocRef.set(AppData())
+                    }
                 }
             }
         }

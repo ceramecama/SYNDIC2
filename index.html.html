@@ -2031,14 +2031,34 @@
                 document.querySelectorAll('.btn-admin-only').forEach(btn => {
                     btn.style.display = isAdmin() ? 'inline-block' : 'none';
                 });
+
+                // Toggle visibility of Users link in navbar
+                const navUsers = document.getElementById('navUsersLink');
+                if (navUsers) navUsers.style.display = isAdmin() ? 'inline-block' : 'none';
+
+                startUsersSync();
             }
         }
 
         let mainSyncListener = null;
         let chatSyncListener = null;
         let announcementSyncListener = null;
+        let usersSyncListener = null;
         let chatSyncRetryTimer = null;
         let chatSyncRetryDelay = 3000; // Start at 3s, doubles on each failure (max 60s)
+
+        function startUsersSync() {
+            if (usersSyncListener) return;
+            if (!firebase.auth().currentUser) return;
+            usersSyncListener = db.collection("users").onSnapshot(snap => {
+                console.log("Users snapshot received, count:", snap.size);
+                allUsers = snap.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+                const usersElem = document.getElementById('users');
+                if (usersElem && usersElem.classList.contains('active')) renderUsers();
+            }, err => {
+                console.error("Users sync error:", err);
+            });
+        }
 
         function startChatSync() {
             if (chatSyncListener) return;
@@ -2109,18 +2129,21 @@
 
         function startDataSync() {
             startChatSync();
+            startUsersSync();
             if (mainSyncListener) return;
 
             // Main Data (Buildings, Apartments, Expenses)
-            mainSyncListener = db.collection("syndic_data").doc("syndic1").onSnapshot(doc => {
+            mainSyncListener = db.collection("syndic_data").doc("syndic1").onSnapshot(async doc => {
                 const statusIndicator = document.getElementById('sync-status');
                 if (statusIndicator) {
                     statusIndicator.style.background = '#10b981';
                     statusIndicator.title = "Connected to Firebase";
                 }
 
-                if (doc.exists) {
-                    const docData = doc.data();
+                const docData = doc.exists ? doc.data() : null;
+                const hasBuildings = docData && Array.isArray(docData.buildings) && docData.buildings.length > 0;
+
+                if (hasBuildings) {
                     data.buildings = docData.buildings || [];
                     data.apartments = docData.apartments || [];
                     data.expenses = docData.expenses || [];
@@ -2139,13 +2162,48 @@
                     }
                     refreshCurrentView();
                 } else {
-                    if (userAccount && userAccount.role === 'admin') {
-                        saveData();
-                    } else {
-                        // Resident: doc doesn't exist yet, still mark as loaded
-                        if (!isLoaded) { isLoaded = true; init(); }
-                        refreshCurrentView();
+                    // Check fallback doc "zaineb4" in case data is in legacy doc!
+                    try {
+                        const legacyDoc = await db.collection("syndic_data").doc("zaineb4").get();
+                        if (legacyDoc.exists) {
+                            const lData = legacyDoc.data();
+                            if (Array.isArray(lData.buildings) && lData.buildings.length > 0) {
+                                console.log("Found buildings in legacy doc 'zaineb4', adopting and copying to 'syndic1'...");
+                                data.buildings = lData.buildings || [];
+                                data.apartments = lData.apartments || [];
+                                data.expenses = lData.expenses || [];
+                                data.payments = lData.payments || {};
+
+                                ['buildings', 'apartments', 'expenses'].forEach(key => {
+                                    if (data[key] && !Array.isArray(data[key])) data[key] = Object.values(data[key]);
+                                });
+
+                                if (!isLoaded) { isLoaded = true; init(); }
+                                refreshCurrentView();
+
+                                if (userAccount && userAccount.role === 'admin') {
+                                    saveData();
+                                }
+                                return;
+                            }
+                        }
+                    } catch(errLegacy) {
+                        console.warn("Legacy check zaineb4 error:", errLegacy);
                     }
+
+                    if (doc.exists) {
+                        data.buildings = docData.buildings || [];
+                        data.apartments = docData.apartments || [];
+                        data.expenses = docData.expenses || [];
+                        data.payments = docData.payments || {};
+                    } else if (userAccount && userAccount.role === 'admin') {
+                        saveData();
+                    }
+                    if (!isLoaded) {
+                        isLoaded = true;
+                        init();
+                    }
+                    refreshCurrentView();
                 }
             }, err => {
                 console.error("Main data sync error:", err.code, err.message);
@@ -2163,19 +2221,6 @@
                     data.announcements = snap.docs.map(doc => doc.data());
                     if (document.getElementById('communication').classList.contains('active')) renderAnnouncements();
                 });
-            }
-
-            // Sync Users Collection (Admin only)
-            if (userAccount && userAccount.role === "admin") {
-                db.collection("users").onSnapshot(snap => {
-                    console.log("Users snapshot received, count:", snap.size);
-                    allUsers = snap.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
-                    if (document.getElementById('users').classList.contains('active')) renderUsers();
-                }, err => {
-                    console.error("Users sync error:", err);
-                });
-            } else {
-                console.log("Not admin – skipping users collection sync.");
             }
         }
 
@@ -3738,12 +3783,25 @@
 
         // UTILS
         function changeLanguage() { currentLang = document.getElementById('langSelect').value; localStorage.setItem('syndicLang', currentLang); applyLanguage(); }
-        function renderUsers() {
+        async function renderUsers() {
             const container = document.getElementById('usersList');
+            if (!container) return;
+
+            if (allUsers.length === 0) {
+                container.innerHTML = '<p style="padding:20px;text-align:center;">جاري تحميل المستخدمين...</p>';
+                try {
+                    const snap = await db.collection("users").get();
+                    if (!snap.empty) {
+                        allUsers = snap.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+                    }
+                } catch(e) {
+                    console.error("Direct users fetch error:", e);
+                }
+            }
             container.innerHTML = '';
 
-            const pending = allUsers.filter(u => !u.approved);
-            const approved = allUsers.filter(u => u.approved);
+            const pending = allUsers.filter(u => u.approved === false);
+            const approved = allUsers.filter(u => u.approved !== false);
 
             let html = '';
             if (pending.length > 0) {
