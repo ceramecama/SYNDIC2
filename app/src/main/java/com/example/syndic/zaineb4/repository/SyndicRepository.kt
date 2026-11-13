@@ -87,9 +87,9 @@ class SyndicRepository {
                 val account = snapshot.toObject(UserAccount::class.java)
                 _userAccount.value = account
                 startChatListening()
-                if (account?.approved == true) {
+                if (account?.approved != false) {
                     startListening()
-                    if (account.role == "admin") {
+                    if (account?.role == "admin") {
                         startAllUsersListening()
                     } else {
                         stopAllUsersListening()
@@ -99,7 +99,7 @@ class SyndicRepository {
                     stopAllUsersListening()
                 }
             } else {
-                // If doc doesn't exist, create it automatically (first user is admin)
+                // If doc doesn't exist, create it automatically (all users approved: true)
                 val email = auth.currentUser?.email ?: ""
                 db.collection("users").get().addOnCompleteListener { usersTask ->
                     val isFirst = usersTask.isSuccessful && (usersTask.result?.isEmpty == true)
@@ -107,7 +107,7 @@ class SyndicRepository {
                         uid = uid, 
                         email = email, 
                         role = if (isFirst) "admin" else "resident", 
-                        approved = isFirst
+                        approved = true
                     )
                     db.collection("users").document(uid).set(newAccount)
                     _userAccount.value = newAccount
@@ -389,8 +389,6 @@ class SyndicRepository {
     fun stopListening() {
         listenerRegistration?.remove()
         listenerRegistration = null
-        chatListener?.remove()
-        chatListener = null
         announcementListener?.remove()
         announcementListener = null
         isInitialLoad = true
@@ -515,7 +513,7 @@ class SyndicRepository {
                             uid = uid, 
                             email = email, 
                             role = if (isFirst) "admin" else "resident", 
-                            approved = isFirst,
+                            approved = true,
                             name = name,
                             phone = phone,
                             apartment = apartment,
@@ -536,6 +534,8 @@ class SyndicRepository {
         _userAccount.value = null
         isInitialLoad = true
         lastAnnouncementId = null
+        chatListener?.remove()
+        chatListener = null
         stopListening()
         stopUserListening()
     }

@@ -1724,7 +1724,7 @@
                 lbl_email: "البريد الإلكتروني", lbl_password: "كلمة المرور", lbl_name: "الاسم الكامل", lbl_phone: "رقم الهاتف", lbl_building: "العمارة", lbl_apartment: "رقم الشقة",
                 lbl_remember_me: "تذكرني", btn_forgot_pwd: "نسيت كلمة السر؟", btn_login: "تسجيل الدخول", btn_register: "إنشاء حساب",
                 btn_login_mode: "ليس لديك حساب؟ إنشاء حساب", btn_register_mode: "لديك حساب؟ تسجيل الدخول", title_register: "إنشاء حساب جديد", title_login: "تسجيل الدخول",
-                btn_approve: "موافقة", btn_make_admin: "إعطاء صلاحية مسؤل", btn_delete_user: "حذف",
+                btn_approve: "موافقة", btn_make_admin: "إعطاء صلاحية مسؤل", btn_remove_admin: "إزالة صلاحية مسؤل", btn_delete_user: "حذف",
                 title_export_excel: "تحميل ملف Excel", lbl_export_year: "اختر السنة :", lbl_export_month: "اختر الشهر :", lbl_export_type: "نوع التقرير :", opt_export_bilan: "الحصيلة كاملة (المصاريف + المداخيل + الملخص)", opt_export_payments: "سجل الأداءات فقط", opt_export_expenses: "سجل المصاريف فقط", btn_download_excel: "تحميل Excel 📥",
                 apk_title: "📲 تحميل تطبيق الأندرويد الرسمي (APK)", apk_desc: "حمّل تطبيق SYNDIC 1 مباشرة على هاتفك لتجربة أسرع وسهلة الاستخدام وتصفح بدون متصفح.", apk_btn: "تحميل التطبيق (APK)", apk_guide_btn: "💡 طريقة التثبيت", qr_code_btn: "📷 رمز QR"
             },
@@ -1745,7 +1745,7 @@
                 lbl_email: "Email", lbl_password: "Mot de passe", lbl_name: "Nom complet", lbl_phone: "Numéro de téléphone", lbl_building: "Bâtiment", lbl_apartment: "Appartement",
                 lbl_remember_me: "Se souvenir de moi", btn_forgot_pwd: "Mot de passe oublié?", btn_login: "Connexion", btn_register: "S'inscrire",
                 btn_login_mode: "Déjà un compte? Se connecter", btn_register_mode: "Pas de compte? S'inscrire", title_register: "Créer un compte", title_login: "Connexion",
-                title_users: "Gestion des utilisateurs", btn_approve: "Approuver", btn_make_admin: "Rendre Admin", btn_delete_user: "Supprimer",
+                title_users: "Gestion des utilisateurs", btn_approve: "Approuver", btn_make_admin: "Rendre Admin", btn_remove_admin: "Retirer Admin", btn_delete_user: "Supprimer",
                 title_export_excel: "Télécharger Excel", lbl_export_year: "Sélectionner l'année :", lbl_export_month: "Sélectionner le mois :", lbl_export_type: "Type de rapport :", opt_export_bilan: "Bilan complet (Dépenses + Recettes + Résumé)", opt_export_payments: "Paiements uniquement", opt_export_expenses: "Dépenses uniquement", btn_download_excel: "Télécharger Excel 📥",
                 apk_title: "📲 Télécharger l'application Android (APK)", apk_desc: "Téléchargez l'application officielle SYNDIC 1 directement sur votre smartphone pour un accès plus rapide.", apk_btn: "Télécharger APK", apk_guide_btn: "💡 Guide d'installation", qr_code_btn: "📷 Code QR"
             },
@@ -1765,7 +1765,7 @@
                 lbl_email: "Email", lbl_password: "Password", lbl_name: "Full Name", lbl_phone: "Phone Number", lbl_building: "Building", lbl_apartment: "Apartment",
                 lbl_remember_me: "Remember Me", btn_forgot_pwd: "Forgot Password?", btn_login: "Login", btn_register: "Register",
                 btn_login_mode: "Already have an account? Login", btn_register_mode: "Don't have an account? Register", title_register: "Create New Account", title_login: "Secure Login",
-                btn_approve: "Approve", btn_make_admin: "Make Admin", btn_delete_user: "Delete",
+                btn_approve: "Approve", btn_make_admin: "Make Admin", btn_remove_admin: "Remove Admin", btn_delete_user: "Delete",
                 title_export_excel: "Download Excel", lbl_export_year: "Select Year:", lbl_export_month: "Select Month:", lbl_export_type: "Report Type:", opt_export_bilan: "Full Bilan (Expenses + Incomes + Summary)", opt_export_payments: "Payments only", opt_export_expenses: "Expenses only", btn_download_excel: "Download Excel 📥",
                 apk_title: "📲 Download Android App (APK)", apk_desc: "Download official SYNDIC 1 app directly on your smartphone for faster access and smooth experience.", apk_btn: "Download APK", apk_guide_btn: "💡 Install Guide", qr_code_btn: "📷 QR Code"
             }
@@ -1776,8 +1776,8 @@
         function closeModal() { document.getElementById('universalModal').style.display = 'none'; }
 
         function requireAuth(callback) {
-            if (userAccount && userAccount.approved) return callback();
-            alert("🔒 يجب أن يكون حسابك مفعلاً من قبل الإدارة لتنفيذ هذه العملية.");
+            if (userAccount && userAccount.approved !== false) return callback();
+            alert("🔒 يجب أن يكون حسابك مفعلاً لتنفيذ هذه العملية.");
         }
 
         function requireAdmin(callback) {
@@ -1861,7 +1861,7 @@
                     uid: uid,
                     email: email,
                     role: isFirstUser ? 'admin' : 'resident',
-                    approved: isFirstUser ? true : false,
+                    approved: true,
                     name: name,
                     phone: phone,
                     building: building,
@@ -1962,7 +1962,7 @@
                         userAccount = doc.data();
                         console.log("User role:", userAccount.role, "Approved:", userAccount.approved);
                         updateUIShowHide();
-                        if (userAccount.approved) {
+                        if (userAccount.approved !== false) {
                             startDataSync();
                         }
                     } else {
@@ -1978,7 +1978,7 @@
                             uid: user.uid, 
                             email: user.email, 
                             role: isFirstUser ? 'admin' : 'resident', 
-                            approved: isFirstUser ? true : false 
+                            approved: true 
                         };
                         await db.collection("users").doc(user.uid).set(newAcc);
                     }
@@ -2016,7 +2016,7 @@
                 pending.style.display = 'none';
                 main.style.display = 'none';
                 navbar.style.display = 'none';
-            } else if (!userAccount.approved) {
+            } else if (userAccount.approved === false && userAccount.role !== 'admin') {
                 login.style.display = 'none';
                 pending.style.display = 'flex';
                 main.style.display = 'none';
@@ -3773,6 +3773,7 @@
                     <div style="display: flex; gap: 10px;">
                         ${isPending ? `<button class="btn btn-primary btn-sm" onclick="approveUser('${u.uid}')">${t('btn_approve')}</button>` : ''}
                         ${(!isAdm && !isPending) ? `<button class="btn btn-secondary btn-sm" onclick="makeAdmin('${u.uid}')">${t('btn_make_admin')}</button>` : ''}
+                        ${(isAdm && u.uid !== (currentUser ? currentUser.uid : '')) ? `<button class="btn btn-sm" style="background:#f59e0b;color:#fff;" onclick="removeAdmin('${u.uid}')">${t('btn_remove_admin')}</button>` : ''}
                         <button class="btn btn-danger btn-sm" onclick="deleteUserRow('${u.uid}')">${t('btn_delete_user')}</button>
                     </div>
                 </div>
@@ -3798,6 +3799,17 @@
                 renderUsers();
             } catch (err) {
                 console.error("makeAdmin error:", err);
+                alert("❌ فشلت العملية: " + err.message);
+            }
+        }
+        async function removeAdmin(uid) {
+            if (!confirm("هل أنت متأكد من إزالة صلاحية المسؤول من هذا المستخدم؟")) return;
+            try {
+                await db.collection("users").doc(uid).update({ role: 'resident' });
+                alert("✅ تم إزالة صلاحية المسؤول!");
+                renderUsers();
+            } catch (err) {
+                console.error("removeAdmin error:", err);
                 alert("❌ فشلت العملية: " + err.message);
             }
         }
