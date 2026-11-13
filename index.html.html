@@ -3784,7 +3784,7 @@
             try {
                 await db.collection("users").doc(uid).update({ approved: true });
                 alert("✅ تمت الموافقة على المستخدم بنجاح!");
-                renderAdminPanel();
+                renderUsers();
             } catch (err) {
                 console.error("approveUser error:", err);
                 alert("❌ فشلت العملية: " + err.message + "\n\nتأكد من أن حسابك مسجل كـ admin في Firebase.");
@@ -3795,7 +3795,7 @@
             try {
                 await db.collection("users").doc(uid).update({ role: 'admin', approved: true });
                 alert("✅ تم تعيين المستخدم كمسؤول!");
-                renderAdminPanel();
+                renderUsers();
             } catch (err) {
                 console.error("makeAdmin error:", err);
                 alert("❌ فشلت العملية: " + err.message);
@@ -3806,7 +3806,7 @@
             try {
                 await db.collection("users").doc(uid).delete();
                 alert("✅ تم حذف المستخدم.");
-                renderAdminPanel();
+                renderUsers();
             } catch (err) {
                 console.error("deleteUserRow error:", err);
                 alert("❌ فشل الحذف: " + err.message);
