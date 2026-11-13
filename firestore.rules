@@ -3,102 +3,77 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ════════════════════════════════════════════════════════════
-    //  دوال التحقق المساعدة — Helper Functions
+    //  SYNDIC 1 - Firestore Security Rules
     // ════════════════════════════════════════════════════════════
 
-    // هل المستخدم مسجل الدخول؟
-    function isAuthenticated() {
+    // Helper: check if the current user is admin
+    function isAdmin() {
+      return request.auth != null
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Helper: user is authenticated
+    function isAuth() {
       return request.auth != null;
     }
 
-    // جلب وثيقة المستخدم إذا كانت موجودة
-    function userDoc() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid));
-    }
-
-    // هل المستخدم مسؤول (Admin)؟
-    function isAdmin() {
-      return isAuthenticated() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        userDoc().data.role == "admin";
-    }
-
-    // هل المستخدم معتمد (Approved)؟
-    function isApproved() {
-      return isAuthenticated() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        userDoc().data.approved == true;
-    }
-
-    // ════════════════════════════════════════════════════════════
-    //  1. المستخدمين — /users/{userId}
-    // ════════════════════════════════════════════════════════════
-    //  - القراءة: مسموحة لأي مستخدم مسجل لرؤية قائمة الجيران والإدارة
-    //  - الإنشاء والتعديل: مسموح لصاحب الحساب، أو للمسؤول (للموافقة وتغيير الصلاحيات)
-    //  - الحذف: مسموح للمسؤول أو صاحب الحساب
-    // ════════════════════════════════════════════════════════════
+    // ──── Users collection ────
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && (
-        request.auth.uid == userId || isAdmin() || !exists(/databases/$(database)/documents/users/$(userId))
-      );
-      allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      // Any authenticated user can read all user profiles
+      allow read: if isAuth();
+
+      // A user can create their own doc (registration)
+      allow create: if isAuth() && request.auth.uid == userId;
+
+      // A user can update their own doc BUT cannot change role to admin
+      allow update: if isAuth() && request.auth.uid == userId
+        && (!('role' in request.resource.data) || request.resource.data.role == resource.data.role);
+
+      // Admin can do everything on any user doc
+      allow create, update, delete: if isAdmin();
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  2. البيانات الرئيسية — /syndic_data/**
-    //  (العمارات، الشقق، المصاريف، الصندوق)
-    // ════════════════════════════════════════════════════════════
-    //  - القراءة والكتابة: متاحة لأي مستخدم مسجل معتمد، أو للمسؤول،
-    //    مع السماح بالقراءة لجميع المسجلين لتهيئة التطبيق بسلاسة
-    // ════════════════════════════════════════════════════════════
-    match /syndic_data/{document=**} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
-    }
-
-    // ════════════════════════════════════════════════════════════
-    //  3. الدردشة والمحادثات — /syndic_chat/{messageId}
-    // ════════════════════════════════════════════════════════════
-    //  - القراءة: لجميع المسجلين لرؤية الرسائل العامة
-    //  - الإرسال: مسموح لأي مستخدم مسجل
-    //  - التعديل (الإعجاب، الردود): مسموح للمسجلين
-    //  - الحذف: لصاحب الرسالة أو المسؤول
-    // ════════════════════════════════════════════════════════════
+    // ──── Chat messages ────
     match /syndic_chat/{messageId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
-      allow delete: if isAuthenticated() && (
-        isAdmin() || resource.data.senderUid == request.auth.uid
-      );
+      // All authenticated users can read chat
+      allow read: if isAuth();
+
+      // All authenticated users can create chat messages
+      allow create: if isAuth();
+
+      // Only admin or message sender can update/delete
+      allow update, delete: if isAuth()
+        && (resource.data.senderUid == request.auth.uid || isAdmin());
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  4. الإعلانات — /syndic_announcements/{announcementId}
-    // ════════════════════════════════════════════════════════════
-    //  - القراءة: لجميع المسجلين
-    //  - النشر والحذف: متاح للمسؤول وللمستخدمين المعتمدين
-    //  - التعليقات: مسموحة لجميع المسجلين
-    // ════════════════════════════════════════════════════════════
-    match /syndic_announcements/{announcementId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAuthenticated();
+    // ──── Syndic main data (apartments, expenses, etc.) ────
+    match /syndic_data/{docId} {
+      // All authenticated users can read
+      allow read: if isAuth();
+
+      // Only admin can write
+      allow write: if isAdmin();
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  5. الوصولات والمرفقات — Receipts & Media
-    // ════════════════════════════════════════════════════════════
+    // ──── Announcements ────
+    match /syndic_announcements/{annId} {
+      // All authenticated users can read
+      allow read: if isAuth();
+
+      // Only admin can create/update/delete announcements
+      allow write: if isAdmin();
+    }
+
+    // ──── Announcement images ────
+    match /syndic_announcements_images/{imgId} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+
+    // ──── Receipts (expense images) ────
     match /syndic_receipts/{receiptId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    match /syndic_payment_receipts/{receiptId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    match /syndic_announcements_images/{imageId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuth();
+      allow write: if isAdmin();
     }
 
   }
