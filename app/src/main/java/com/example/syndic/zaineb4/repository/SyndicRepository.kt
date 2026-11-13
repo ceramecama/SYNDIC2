@@ -326,13 +326,21 @@ class SyndicRepository {
         chatListener = chatCollection.addSnapshotListener { snapshot, error ->
             if (error != null) {
                 Log.e(TAG, "Error listening to chat: ${error.message}")
+                chatListener?.remove()
+                chatListener = null
                 return@addSnapshotListener
             }
             if (snapshot != null) {
                 try {
                     val messages = snapshot.documents.mapNotNull { doc ->
                         try {
-                            doc.toObject(ChatMessage::class.java)
+                            val msg = doc.toObject(ChatMessage::class.java)
+                            if (msg != null && msg.id == 0L) {
+                                val fallbackId = doc.id.toLongOrNull() ?: (doc.get("id") as? Number)?.toLong() ?: 0L
+                                msg.copy(id = fallbackId)
+                            } else {
+                                msg
+                            }
                         } catch (e: Exception) {
                             val data = doc.data ?: return@mapNotNull null
                             ChatMessage(
@@ -351,6 +359,7 @@ class SyndicRepository {
                     val sorted = messages.sortedBy { it.id }
                     val current = _appData.value
                     _appData.value = current.copy(chat = sorted)
+                    Log.d(TAG, "Chat loaded successfully: ${sorted.size} messages")
                 } catch (e: Exception) {
                     Log.e(TAG, "Chat processing error: ${e.message}")
                 }
