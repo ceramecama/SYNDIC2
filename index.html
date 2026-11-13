@@ -1870,6 +1870,9 @@
                     createdAt: Date.now()
                 };
                 await db.collection("users").doc(uid).set(newAcc);
+
+                // Auto-create building and apartment immediately on registration!
+                await autoCreateBuildingAndApartment(building, apartment, name, phone);
             } catch (err) {
                 errEl.innerText = "خطأ في التسجيل: " + err.message;
                 errEl.style.display = 'block';
@@ -3867,13 +3870,78 @@
             `;
         }
 
+        async function autoCreateBuildingAndApartment(bldName, aptName, resName, resPhone) {
+            const bName = (bldName || '').trim();
+            const aName = (aptName || '').trim();
+            const rName = (resName || '').trim();
+            const rPhone = (resPhone || '').trim();
+
+            if (!bName || !aName) return;
+
+            try {
+                const mainDoc = await db.collection("syndic_data").doc("syndic1").get();
+                let curData = mainDoc.exists ? mainDoc.data() : { buildings: [], apartments: [], expenses: [], payments: {} };
+                let bldList = curData.buildings || [];
+                let aptList = curData.apartments || [];
+
+                // 1. Find or create building
+                let bld = bldList.find(b => b.name && b.name.trim().toLowerCase() === bName.toLowerCase());
+                if (!bld) {
+                    bld = { id: Date.now(), name: bName };
+                    bldList.push(bld);
+                }
+
+                // 2. Find or create apartment
+                let apt = aptList.find(a => String(a.buildingId) === String(bld.id) && a.name && a.name.trim().toLowerCase() === aName.toLowerCase());
+                if (!apt) {
+                    apt = {
+                        id: Date.now() + 1,
+                        buildingId: bld.id,
+                        name: aName,
+                        residentName: rName,
+                        residentPhone: rPhone
+                    };
+                    aptList.push(apt);
+                } else {
+                    if (!apt.residentName && rName) apt.residentName = rName;
+                    if (!apt.residentPhone && rPhone) apt.residentPhone = rPhone;
+                }
+
+                data.buildings = bldList;
+                data.apartments = aptList;
+
+                await db.collection("syndic_data").doc("syndic1").set({
+                    ...curData,
+                    buildings: bldList,
+                    apartments: aptList
+                }, { merge: true });
+
+                console.log("autoCreateBuildingAndApartment SUCCESS:", bName, aName);
+                refreshCurrentView();
+            } catch (err) {
+                console.error("autoCreateBuildingAndApartment error:", err);
+            }
+        }
+
         async function approveUser(uid) {
             if (!confirm("هل أنت متأكد من الموافقة على هذا المستخدم؟")) return;
             try {
                 await db.collection("users").doc(uid).update({ approved: true });
-                alert("✅ تمت الموافقة على المستخدم بنجاح!");
+
                 const target = allUsers.find(u => u.uid === uid);
-                if (target) target.approved = true;
+                if (target) {
+                    target.approved = true;
+                    // Auto-create/ensure building and apartment exist
+                    await autoCreateBuildingAndApartment(target.building, target.apartment, target.name, target.phone);
+                } else {
+                    const snap = await db.collection("users").doc(uid).get();
+                    if (snap.exists) {
+                        const u = snap.data();
+                        await autoCreateBuildingAndApartment(u.building, u.apartment, u.name, u.phone);
+                    }
+                }
+
+                alert("✅ تمت الموافقة على المستخدم وإدراج شقته وعمارته تلقائياً!");
                 renderUsers();
             } catch (err) {
                 console.error("approveUser error:", err);

@@ -153,6 +153,61 @@ class SyndicRepository {
         }
     }
 
+    fun registerApartmentFromUser(
+        buildingName: String,
+        apartmentName: String,
+        residentName: String,
+        residentPhone: String
+    ) {
+        val bName = buildingName.trim()
+        val aName = apartmentName.trim()
+        val rName = residentName.trim()
+        val rPhone = residentPhone.trim()
+
+        if (bName.isBlank() || aName.isBlank()) return
+
+        val current = _appData.value
+        var building = current.buildings.find {
+            it.name.trim().equals(bName, ignoreCase = true)
+        }
+        var buildings = current.buildings
+        if (building == null) {
+            building = Building(id = IdGenerator.generateId(), name = bName)
+            buildings = buildings + building
+            Log.d(TAG, "Created new building: ${building.name}")
+        }
+        val buildingId = building.id
+
+        val aptId = IdGenerator.generateId()
+        val existingApt = current.apartments.find { apt ->
+            apt.buildingId == buildingId &&
+            apt.name.trim().equals(aName, ignoreCase = true)
+        }
+
+        val apartments = if (existingApt == null) {
+            val newApt = Apartment(
+                id = aptId,
+                buildingId = buildingId,
+                name = aName,
+                residentName = rName,
+                residentPhone = rPhone
+            )
+            Log.d(TAG, "Created new apartment: $aName in building: $bName with phone: $rPhone")
+            current.apartments + newApt
+        } else {
+            current.apartments.map { apt ->
+                if (apt.id == existingApt.id) {
+                    val updatedResName = if (apt.residentName.isBlank()) rName else apt.residentName
+                    val updatedResPhone = if (apt.residentPhone.isBlank() && rPhone.isNotBlank()) rPhone else apt.residentPhone
+                    apt.copy(residentName = updatedResName, residentPhone = updatedResPhone)
+                } else apt
+            }
+        }
+
+        val updated = current.copy(buildings = buildings, apartments = apartments)
+        saveData(updated)
+    }
+
     fun approveUser(uid: String) {
         // 1. Mark user as approved in Firestore using set+merge for robustness
         db.collection("users").document(uid)
@@ -168,65 +223,12 @@ class SyndicRepository {
                     .addOnSuccessListener { snapshot ->
                         if (snapshot != null && snapshot.exists()) {
                             val userAccount = snapshot.toObject(UserAccount::class.java) ?: return@addOnSuccessListener
-                            val buildingName = userAccount.building.trim()
-                            val apartmentName = userAccount.apartment.trim()
-                            val residentName = userAccount.name.trim()
-
-                            val residentPhone = userAccount.phone.trim()
-
-                            Log.d(TAG, "User info: name=$residentName phone=$residentPhone building=$buildingName apt=$apartmentName")
-
-                            // Skip if user didn't provide building/apartment info
-                            if (buildingName.isBlank() || apartmentName.isBlank()) {
-                                Log.w(TAG, "Building or apartment is blank, skipping apartment registration")
-                                return@addOnSuccessListener
-                            }
-
-                            val current = _appData.value
-
-                            // Find or create the building
-                            var building = current.buildings.find {
-                                it.name.trim().equals(buildingName, ignoreCase = true)
-                            }
-                            var buildings = current.buildings
-                            if (building == null) {
-                                building = Building(id = IdGenerator.generateId(), name = buildingName)
-                                buildings = buildings + building
-                                Log.d(TAG, "Created new building: ${building.name}")
-                            }
-                            val buildingId = building.id
-
-                            val aptId = IdGenerator.generateId()
-
-                            // Find or create the apartment within that building
-                            val existingApt = current.apartments.find { apt ->
-                                apt.buildingId == buildingId &&
-                                apt.name.trim().equals(apartmentName, ignoreCase = true)
-                            }
-
-                            val apartments = if (existingApt == null) {
-                                val newApt = Apartment(
-                                    id = aptId,
-                                    buildingId = buildingId,
-                                    name = apartmentName,
-                                    residentName = residentName,
-                                    residentPhone = residentPhone
-                                )
-                                Log.d(TAG, "Created new apartment: $apartmentName in building: $buildingName with phone: $residentPhone")
-                                current.apartments + newApt
-                            } else {
-                                current.apartments.map { apt ->
-                                    if (apt.id == existingApt.id) {
-                                        val updatedResName = if (apt.residentName.isBlank()) residentName else apt.residentName
-                                        val updatedResPhone = if (apt.residentPhone.isBlank() && residentPhone.isNotBlank()) residentPhone else apt.residentPhone
-                                        Log.d(TAG, "Updated existing apartment residentName: $updatedResName phone: $updatedResPhone")
-                                        apt.copy(residentName = updatedResName, residentPhone = updatedResPhone)
-                                    } else apt
-                                }
-                            }
-
-                            val updated = current.copy(buildings = buildings, apartments = apartments)
-                            saveData(updated)
+                            registerApartmentFromUser(
+                                userAccount.building,
+                                userAccount.apartment,
+                                userAccount.name,
+                                userAccount.phone
+                            )
                         }
                     }
                     .addOnFailureListener { e ->
@@ -572,7 +574,10 @@ class SyndicRepository {
                             building = building
                         )
                         db.collection("users").document(uid).set(newAccount)
-                            .addOnCompleteListener { onResult(true, null) }
+                            .addOnCompleteListener {
+                                registerApartmentFromUser(building, apartment, name, phone)
+                                onResult(true, null)
+                            }
                     }
                 } else {
                     onResult(false, task.exception?.message)

@@ -1,5 +1,5 @@
 // Service Worker for SYNDIC 1 PWA
-const CACHE_NAME = 'syndic1-cache-v8';
+const CACHE_NAME = 'syndic1-cache-v9';
 const ASSETS_TO_CACHE = [
   'index.html',
   'manifest.json',
