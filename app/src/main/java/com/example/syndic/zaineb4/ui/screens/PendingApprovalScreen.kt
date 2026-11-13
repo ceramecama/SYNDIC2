@@ -5,12 +5,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,6 +23,15 @@ import com.example.syndic.zaineb4.viewmodel.SyndicViewModel
 @Composable
 fun PendingApprovalScreen(viewModel: SyndicViewModel) {
     var showLogoutDialog by remember { mutableStateOf(false) }
+    var isChecking by remember { mutableStateOf(false) }
+
+    // Auto-poll approval status every 3 seconds
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(3000)
+            viewModel.refreshUserStatus()
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -68,8 +75,22 @@ fun PendingApprovalScreen(viewModel: SyndicViewModel) {
             Spacer(modifier = Modifier.height(48.dp))
 
             Button(
+                onClick = {
+                    isChecking = true
+                    viewModel.refreshUserStatus()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF27AE60)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("تحقق من تفعيل الحساب / Vérifier", fontSize = 16.sp)
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedButton(
                 onClick = { showLogoutDialog = true },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34495E)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Icon(Icons.Default.Logout, contentDescription = null)

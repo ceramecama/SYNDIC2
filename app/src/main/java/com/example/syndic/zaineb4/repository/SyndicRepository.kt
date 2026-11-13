@@ -138,12 +138,30 @@ class SyndicRepository {
         _allUsers.value = emptyList()
     }
 
+    fun refreshUserStatus() {
+        val uid = auth.currentUser?.uid ?: return
+        db.collection("users").document(uid).get().addOnSuccessListener { snapshot ->
+            if (snapshot != null && snapshot.exists()) {
+                val account = snapshot.toObject(UserAccount::class.java)
+                if (account != null) {
+                    _userAccount.value = account
+                    Log.d(TAG, "refreshUserStatus: account.approved=${account.approved}")
+                }
+            }
+        }.addOnFailureListener { e ->
+            Log.e(TAG, "refreshUserStatus failed: ${e.message}")
+        }
+    }
+
     fun approveUser(uid: String) {
         // 1. Mark user as approved in Firestore using set+merge for robustness
         db.collection("users").document(uid)
             .update("approved", true)
             .addOnSuccessListener {
                 Log.d(TAG, "✅ approveUser SUCCESS for uid=$uid")
+                _allUsers.value = _allUsers.value.map {
+                    if (it.uid == uid) it.copy(approved = true) else it
+                }
 
                 // 2. Auto-register user in the apartments/buildings list
                 db.collection("users").document(uid).get()

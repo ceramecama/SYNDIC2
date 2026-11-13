@@ -46,6 +46,7 @@ class SyndicViewModel(private val repository: SyndicRepository) : ViewModel() {
     fun resetPassword(email: String, onResult: (Boolean, String?) -> Unit) =
         repository.resetPassword(email, onResult)
 
+    fun refreshUserStatus() = repository.refreshUserStatus()
     fun approveUser(uid: String) = repository.approveUser(uid)
     fun makeAdmin(uid: String) = repository.makeAdmin(uid)
     fun deleteUser(uid: String) = repository.deleteUser(uid)

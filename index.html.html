@@ -1428,7 +1428,8 @@
             <h2 style="color: var(--primary);">الحساب قيد المراجعة</h2>
             <p style="color: #6b7280; font-size: 18px; line-height: 1.6;">شكراً لتسجيلك. حسابك في حالة انتظار موافقة
                 المسؤول (السانديك). يرجى العودة لاحقاً أو التواصل مع الإدارة.</p>
-            <button class="btn btn-danger" style="margin-top: 30px; width: 100%;" onclick="handleLogout()">تسجيل
+            <button class="btn btn-primary" style="margin-top: 25px; width: 100%;" onclick="checkApprovalStatus()">🔄 تحقق من تفعيل الحساب (Vérifier)</button>
+            <button class="btn btn-danger" style="margin-top: 10px; width: 100%;" onclick="handleLogout()">تسجيل
                 الخروج</button>
         </div>
     </div>
@@ -1891,7 +1892,30 @@
             }
         }
 
+        let pendingPollInterval = null;
+        async function checkApprovalStatus() {
+            const user = firebase.auth().currentUser;
+            if (!user) return;
+            try {
+                const doc = await db.collection("users").doc(user.uid).get();
+                if (doc.exists) {
+                    const acc = doc.data();
+                    if (acc.role === 'admin' || acc.approved) {
+                        userAccount = acc;
+                        if (pendingPollInterval) { clearInterval(pendingPollInterval); pendingPollInterval = null; }
+                        updateUIShowHide();
+                        startDataSync();
+                    } else {
+                        alert("⏳ الحساب ما زال في انتظار موافقة المسؤول.\n\nLe compte est toujours en attente d'approbation.");
+                    }
+                }
+            } catch (err) {
+                console.error("checkApprovalStatus error:", err);
+            }
+        }
+
         function handleLogout() {
+            if (pendingPollInterval) { clearInterval(pendingPollInterval); pendingPollInterval = null; }
             firebase.auth().signOut().then(() => {
                 location.reload();
             });
@@ -2021,7 +2045,11 @@
                 pending.style.display = 'flex';
                 main.style.display = 'none';
                 navbar.style.display = 'none';
+                if (!pendingPollInterval) {
+                    pendingPollInterval = setInterval(checkApprovalStatus, 3000);
+                }
             } else {
+                if (pendingPollInterval) { clearInterval(pendingPollInterval); pendingPollInterval = null; }
                 login.style.display = 'none';
                 pending.style.display = 'none';
                 main.style.display = 'block';

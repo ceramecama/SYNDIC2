@@ -6,57 +6,38 @@ service cloud.firestore {
     //  SYNDIC 1 - Firestore Security Rules
     // ════════════════════════════════════════════════════════════
 
-    // Helper: user is authenticated
     function isAuth() {
       return request.auth != null;
     }
 
-    // Helper: check if the current user is admin
-    function isAdmin() {
-      return isAuth()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-
     // ──── Users collection ────
     match /users/{userId} {
-      allow read: if isAuth();
-      // User can create/update their OWN doc
-      allow create, update: if isAuth() && request.auth.uid == userId;
-      // Admin can do everything on any user doc
-      allow create, update, delete: if isAdmin();
+      allow read, write: if isAuth();
     }
 
     // ──── Chat messages ────
     match /syndic_chat/{messageId} {
-      allow read: if isAuth();
-      allow create: if isAuth();
-      allow update, delete: if isAuth()
-        && (resource.data.senderUid == request.auth.uid || isAdmin());
+      allow read, write: if isAuth();
     }
 
     // ──── Syndic main data (apartments, expenses, etc.) ────
     match /syndic_data/{docId} {
-      allow read: if isAuth();
-      allow write: if isAdmin();
+      allow read, write: if isAuth();
     }
 
     // ──── Announcements ────
     match /syndic_announcements/{annId} {
-      allow read: if isAuth();
-      allow write: if isAdmin();
+      allow read, write: if isAuth();
     }
 
     // ──── Announcement images ────
     match /syndic_announcements_images/{imgId} {
-      allow read: if isAuth();
-      allow write: if isAdmin();
+      allow read, write: if isAuth();
     }
 
     // ──── Receipts (expense images) ────
     match /syndic_receipts/{receiptId} {
-      allow read: if isAuth();
-      allow write: if isAdmin();
+      allow read, write: if isAuth();
     }
 
   }
