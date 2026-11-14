@@ -1428,7 +1428,7 @@
             <h2 style="color: var(--primary);">الحساب قيد المراجعة</h2>
             <p style="color: #6b7280; font-size: 18px; line-height: 1.6;">شكراً لتسجيلك. حسابك في حالة انتظار موافقة
                 المسؤول (السانديك). يرجى العودة لاحقاً أو التواصل مع الإدارة.</p>
-            <button class="btn btn-primary" style="margin-top: 25px; width: 100%;" onclick="checkApprovalStatus()">🔄 تحقق من تفعيل الحساب (Vérifier)</button>
+            <button class="btn btn-primary" style="margin-top: 25px; width: 100%;" onclick="checkApprovalStatus(false)">🔄 تحقق من تفعيل الحساب (Vérifier)</button>
             <button class="btn btn-danger" style="margin-top: 10px; width: 100%;" onclick="handleLogout()">تسجيل
                 الخروج</button>
         </div>
@@ -1773,7 +1773,10 @@
         };
 
         // UI HELPERS
-        function t(key) { return i18n[currentLang][key] || key; }
+        function t(key) {
+            const dict = (i18n && i18n[currentLang]) || (i18n && i18n.ar) || {};
+            return dict[key] || key;
+        }
         function closeModal() { document.getElementById('universalModal').style.display = 'none'; }
 
         function requireAuth(callback) {
@@ -1846,6 +1849,9 @@
             }
 
             try {
+                // Flag to protect against onAuthStateChanged racing with registration
+                window.isRegisteringUser = true;
+
                 const cred = await firebase.auth().createUserWithEmailAndPassword(email, pwd);
                 const uid = cred.user.uid;
 
@@ -1853,9 +1859,9 @@
                 let isFirstUser = false;
                 try {
                     const snap = await db.collection("users").get();
-                    if (snap.empty) isFirstUser = true;
+                    if (snap.empty || (snap.size === 1 && snap.docs[0].id === uid)) isFirstUser = true;
                 } catch(e) {
-                    isFirstUser = true;
+                    isFirstUser = false;
                 }
 
                 const newAcc = {
@@ -1869,11 +1875,17 @@
                     apartment: apartment,
                     createdAt: Date.now()
                 };
+
                 await db.collection("users").doc(uid).set(newAcc);
+                userAccount = newAcc;
+                window.isRegisteringUser = false;
 
                 // Auto-create building and apartment immediately on registration!
                 await autoCreateBuildingAndApartment(building, apartment, name, phone);
+
+                updateUIShowHide();
             } catch (err) {
+                window.isRegisteringUser = false;
                 errEl.innerText = "خطأ في التسجيل: " + err.message;
                 errEl.style.display = 'block';
             }
@@ -1896,7 +1908,7 @@
         }
 
         let pendingPollInterval = null;
-        async function checkApprovalStatus() {
+        async function checkApprovalStatus(silent = true) {
             const user = firebase.auth().currentUser;
             if (!user) return;
             try {
@@ -1908,8 +1920,9 @@
                         if (pendingPollInterval) { clearInterval(pendingPollInterval); pendingPollInterval = null; }
                         updateUIShowHide();
                         startDataSync();
+                        if (!silent) alert("✅ تم تفعيل حسابك بنجاح! يمكنك الآن استخدام التطبيق.");
                     } else {
-                        alert("⏳ الحساب ما زال في انتظار موافقة المسؤول.\n\nLe compte est toujours en attente d'approbation.");
+                        if (!silent) alert("⏳ الحساب ما زال في انتظار موافقة المسؤول.\n\nLe compte est toujours en attente d'approbation.");
                     }
                 }
             } catch (err) {
@@ -1993,21 +2006,36 @@
                             startDataSync();
                         }
                     } else {
-                        console.log("User doc missing, creating one...");
-                        let isFirstUser = false;
-                        try {
-                            const snap = await db.collection("users").get();
-                            if (snap.empty) isFirstUser = true;
-                        } catch(e) {
-                            isFirstUser = true;
+                        // If registration is currently in progress, do NOT overwrite with blank doc!
+                        if (window.isRegisteringUser) {
+                            console.log("Registration in progress, skipping default user doc creation.");
+                            return;
                         }
-                        const newAcc = { 
-                            uid: user.uid, 
-                            email: user.email, 
-                            role: isFirstUser ? 'admin' : 'resident', 
-                            approved: isFirstUser ? true : false 
-                        };
-                        await db.collection("users").doc(user.uid).set(newAcc);
+                        // Delay check to avoid race condition with handleRegister
+                        setTimeout(async () => {
+                            if (window.isRegisteringUser) return;
+                            try {
+                                const check = await db.collection("users").doc(user.uid).get();
+                                if (!check.exists) {
+                                    console.log("User doc genuinely missing after delay, creating default...");
+                                    let isFirstUser = false;
+                                    try {
+                                        const snap = await db.collection("users").get();
+                                        if (snap.empty || (snap.size === 1 && snap.docs[0].id === user.uid)) isFirstUser = true;
+                                    } catch(e) { isFirstUser = false; }
+                                    const newAcc = { 
+                                        uid: user.uid, 
+                                        email: user.email, 
+                                        role: isFirstUser ? 'admin' : 'resident', 
+                                        approved: isFirstUser ? true : false,
+                                        createdAt: Date.now()
+                                    };
+                                    await db.collection("users").doc(user.uid).set(newAcc);
+                                }
+                            } catch(err) {
+                                console.warn("Delayed user doc creation error:", err);
+                            }
+                        }, 2500);
                     }
                 }, err => {
                     console.error("User doc listener error:", err);
@@ -2049,7 +2077,7 @@
                 main.style.display = 'none';
                 navbar.style.display = 'none';
                 if (!pendingPollInterval) {
-                    pendingPollInterval = setInterval(checkApprovalStatus, 3000);
+                    pendingPollInterval = setInterval(() => checkApprovalStatus(true), 3000);
                 }
             } else {
                 if (pendingPollInterval) { clearInterval(pendingPollInterval); pendingPollInterval = null; }
@@ -3818,53 +3846,68 @@
             const container = document.getElementById('usersList');
             if (!container) return;
 
-            if (allUsers.length === 0) {
-                container.innerHTML = '<p style="padding:20px;text-align:center;">جاري تحميل المستخدمين...</p>';
-                try {
-                    const snap = await db.collection("users").get();
-                    if (!snap.empty) {
-                        allUsers = snap.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+            try {
+                if (allUsers.length === 0) {
+                    container.innerHTML = '<p style="padding:20px;text-align:center;color:#64748b;">جاري تحميل المستخدمين...</p>';
+                    try {
+                        const snap = await db.collection("users").get();
+                        if (!snap.empty) {
+                            allUsers = snap.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+                        }
+                    } catch(e) {
+                        console.error("Direct users fetch error:", e);
                     }
-                } catch(e) {
-                    console.error("Direct users fetch error:", e);
                 }
-            }
-            container.innerHTML = '';
 
-            const pending = allUsers.filter(u => u.role !== 'admin' && !u.approved);
-            const approved = allUsers.filter(u => u.role === 'admin' || u.approved);
+                const pending = allUsers.filter(u => u && u.role !== 'admin' && !u.approved);
+                const approved = allUsers.filter(u => u && (u.role === 'admin' || u.approved));
 
-            let html = '';
-            if (pending.length > 0) {
-                html += `<h3 style="color: var(--secondary); margin-bottom: 15px;">طلبات معلقة (${pending.length})</h3>`;
-                pending.forEach(u => html += createUserCard(u, true));
+                let html = '';
+                if (pending.length > 0) {
+                    html += `<h3 style="color: var(--secondary); margin-bottom: 15px;">طلبات معلقة (${pending.length})</h3>`;
+                    pending.forEach(u => {
+                        try { html += createUserCard(u, true); } catch(cardErr) { console.error("Error creating pending card:", cardErr); }
+                    });
+                }
+                if (approved.length > 0) {
+                    html += `<h3 style="color: var(--primary); margin-top: 30px; margin-bottom: 15px;">المستخدمون المعتمدون (${approved.length})</h3>`;
+                    approved.forEach(u => {
+                        try { html += createUserCard(u, false); } catch(cardErr) { console.error("Error creating approved card:", cardErr); }
+                    });
+                }
+
+                container.innerHTML = html || '<div style="text-align:center;padding:30px;color:#64748b;background:white;border-radius:12px;border:1px dashed #cbd5e1;"><p style="font-size:18px;margin-bottom:8px;">👥 لا يوجد مستخدمون حالياً</p><p style="font-size:13px;color:#94a3b8;">سيظهر هنا أي مستخدم جديد يسجل في التطبيق</p></div>';
+            } catch (err) {
+                console.error("renderUsers critical error:", err);
+                container.innerHTML = `<p style="padding:20px;text-align:center;color:#ef4444;">خطأ في عرض المستخدمين: ${err.message}</p>`;
             }
-            if (approved.length > 0) {
-                html += `<h3 style="color: var(--primary); margin-top: 30px; margin-bottom: 15px;">المستخدمون المعتمدون (${approved.length})</h3>`;
-                approved.forEach(u => html += createUserCard(u, false));
-            }
-            container.innerHTML = html || '<p style="text-align:center;padding:20px;color:#64748b;">لا يوجد مستخدمون حاليا.</p>';
         }
 
         function createUserCard(u, isPending) {
-            const currentAuthUid = firebase.auth().currentUser ? firebase.auth().currentUser.uid : (userAccount ? userAccount.uid : '');
+            const currentAuthUid = (firebase.auth().currentUser && firebase.auth().currentUser.uid) || (userAccount && userAccount.uid) || '';
             const isAdm = u.role === 'admin';
             const cleanPhone = u.phone ? String(u.phone).replace(/[^0-9+]/g, '') : '';
+            const uName = u.name || '---';
+            const uEmail = u.email || '';
+            const uBld = u.building || '-';
+            const uApt = u.apartment || '-';
+            const uUid = u.uid || '';
+
             return `
                 <div class="card" style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; padding: 15px; flex-wrap: wrap; gap: 10px;">
                     <div>
-                        <div style="font-weight: bold; font-size: 16px;">${u.name || '---'} <span style="font-size: 13px; color: #64748b; font-weight: normal;">(${u.email || ''})</span></div>
+                        <div style="font-weight: bold; font-size: 16px;">${uName} <span style="font-size: 13px; color: #64748b; font-weight: normal;">(${uEmail})</span></div>
                         <div style="color: var(--secondary); font-size: 14px; margin-top: 3px;">
-                            🏢 ${u.building || '-'} | 🚪 ${u.apartment || '-'}
+                            🏢 ${uBld} | 🚪 ${uApt}
                             ${u.phone ? ` | 📞 <a href="tel:${cleanPhone}" style="color: var(--secondary); text-decoration: none; font-weight: bold;">${u.phone}</a> <a href="https://api.whatsapp.com/send?phone=${cleanPhone}" target="_blank" style="text-decoration: none; margin-left: 5px;" title="WhatsApp">💬</a>` : ''}
                         </div>
                         <div style="font-size: 12px; color: ${isAdm ? 'var(--primary)' : 'gray'}; margin-top: 2px;">${isAdm ? 'مسؤول (Admin)' : 'ساكن (Resident)'}</div>
                     </div>
-                    <div style="display: flex; gap: 10px;">
-                        ${isPending ? `<button class="btn btn-primary btn-sm" onclick="approveUser('${u.uid}')">${t('btn_approve')}</button>` : ''}
-                        ${(!isAdm && !isPending) ? `<button class="btn btn-secondary btn-sm" onclick="makeAdmin('${u.uid}')">${t('btn_make_admin')}</button>` : ''}
-                        ${(isAdm && u.uid !== currentAuthUid) ? `<button class="btn btn-sm" style="background:#f59e0b;color:#fff;" onclick="removeAdmin('${u.uid}')">${t('btn_remove_admin')}</button>` : ''}
-                        <button class="btn btn-danger btn-sm" onclick="deleteUserRow('${u.uid}')">${t('btn_delete_user')}</button>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        ${isPending ? `<button class="btn btn-primary btn-sm" onclick="approveUser('${uUid}')">${t('btn_approve')}</button>` : ''}
+                        ${(!isAdm && !isPending) ? `<button class="btn btn-secondary btn-sm" onclick="makeAdmin('${uUid}')">${t('btn_make_admin')}</button>` : ''}
+                        ${(isAdm && uUid !== currentAuthUid) ? `<button class="btn btn-sm" style="background:#f59e0b;color:#fff;" onclick="removeAdmin('${uUid}')">${t('btn_remove_admin')}</button>` : ''}
+                        <button class="btn btn-danger btn-sm" onclick="deleteUserRow('${uUid}')">${t('btn_delete_user')}</button>
                     </div>
                 </div>
             `;
@@ -3879,10 +3922,29 @@
             if (!bName || !aName) return;
 
             try {
+                let curData = {};
                 const mainDoc = await db.collection("syndic_data").doc("syndic1").get();
-                let curData = mainDoc.exists ? mainDoc.data() : { buildings: [], apartments: [], expenses: [], payments: {} };
-                let bldList = curData.buildings || [];
-                let aptList = curData.apartments || [];
+                if (mainDoc.exists) {
+                    curData = mainDoc.data() || {};
+                }
+
+                // If syndic1 has no buildings, check legacy doc "zaineb4"
+                if (!curData.buildings || curData.buildings.length === 0) {
+                    try {
+                        const legDoc = await db.collection("syndic_data").doc("zaineb4").get();
+                        if (legDoc.exists) {
+                            const legData = legDoc.data() || {};
+                            if (legData.buildings && legData.buildings.length > 0) {
+                                curData = { ...legData, ...curData };
+                            }
+                        }
+                    } catch(e) { console.warn("Legacy check zaineb4 error:", e); }
+                }
+
+                let bldList = Array.isArray(curData.buildings) ? [...curData.buildings] : [];
+                let aptList = Array.isArray(curData.apartments) ? [...curData.apartments] : [];
+                let expList = Array.isArray(curData.expenses) ? [...curData.expenses] : [];
+                let payList = (curData.payments && typeof curData.payments === 'object') ? curData.payments : {};
 
                 // 1. Find or create building
                 let bld = bldList.find(b => b.name && b.name.trim().toLowerCase() === bName.toLowerCase());
@@ -3898,8 +3960,8 @@
                         id: Date.now() + 1,
                         buildingId: bld.id,
                         name: aName,
-                        residentName: rName,
-                        residentPhone: rPhone
+                        residentName: rName || "",
+                        residentPhone: rPhone || ""
                     };
                     aptList.push(apt);
                 } else {
@@ -3909,13 +3971,17 @@
 
                 data.buildings = bldList;
                 data.apartments = aptList;
+                data.expenses = expList;
+                data.payments = payList;
 
-                await db.collection("syndic_data").doc("syndic1").set({
-                    ...curData,
+                const payload = {
                     buildings: bldList,
-                    apartments: aptList
-                }, { merge: true });
+                    apartments: aptList,
+                    expenses: expList,
+                    payments: payList
+                };
 
+                await db.collection("syndic_data").doc("syndic1").set(payload, { merge: true });
                 console.log("autoCreateBuildingAndApartment SUCCESS:", bName, aName);
                 refreshCurrentView();
             } catch (err) {
@@ -3926,26 +3992,38 @@
         async function approveUser(uid) {
             if (!confirm("هل أنت متأكد من الموافقة على هذا المستخدم؟")) return;
             try {
+                let target = allUsers.find(u => u.uid === uid);
+                if (!target) {
+                    const snap = await db.collection("users").doc(uid).get();
+                    if (snap.exists) target = { uid: snap.id, ...snap.data() };
+                }
+
                 await db.collection("users").doc(uid).update({ approved: true });
 
-                const target = allUsers.find(u => u.uid === uid);
                 if (target) {
                     target.approved = true;
                     // Auto-create/ensure building and apartment exist
-                    await autoCreateBuildingAndApartment(target.building, target.apartment, target.name, target.phone);
-                } else {
-                    const snap = await db.collection("users").doc(uid).get();
-                    if (snap.exists) {
-                        const u = snap.data();
-                        await autoCreateBuildingAndApartment(u.building, u.apartment, u.name, u.phone);
+                    let bld = target.building;
+                    let apt = target.apartment;
+                    if (!bld || !apt) {
+                        bld = prompt("اسم العمارة لهذا الساكن:", target.building || "");
+                        apt = prompt("رقم الشقة لهذا الساكن:", target.apartment || "");
+                        if (bld && apt) {
+                            await db.collection("users").doc(uid).update({ building: bld.trim(), apartment: apt.trim() });
+                            target.building = bld.trim();
+                            target.apartment = apt.trim();
+                        }
+                    }
+                    if (bld && apt) {
+                        await autoCreateBuildingAndApartment(bld, apt, target.name, target.phone);
                     }
                 }
 
-                alert("✅ تمت الموافقة على المستخدم وإدراج شقته وعمارته تلقائياً!");
+                alert("✅ تمت الموافقة على المستخدم وإدراج شقته وعمارته بنجاح!");
                 renderUsers();
             } catch (err) {
                 console.error("approveUser error:", err);
-                alert("❌ فشلت العملية: " + err.message + "\n\nتأكد من أن حسابك مسجل كـ admin في Firebase.");
+                alert("❌ فشلت العملية: " + err.message);
             }
         }
         async function makeAdmin(uid) {

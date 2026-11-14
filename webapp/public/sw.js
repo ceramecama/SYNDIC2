@@ -1,5 +1,5 @@
 // Service Worker for SYNDIC 1 PWA
-const CACHE_NAME = 'syndic1-cache-v9';
+const CACHE_NAME = 'syndic1-cache-v11';
 const ASSETS_TO_CACHE = [
   'index.html',
   'manifest.json',
@@ -28,6 +28,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
+            console.log('Clearing old cache:', key);
             return caches.delete(key);
           }
         })
@@ -39,8 +40,18 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    fetch(event.request).catch(() => {
-      return caches.match(event.request);
-    })
+    fetch(event.request)
+      .then((networkResponse) => {
+        if (event.request.method === 'GET' && networkResponse && networkResponse.status === 200) {
+          const responseClone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseClone);
+          });
+        }
+        return networkResponse;
+      })
+      .catch(() => {
+        return caches.match(event.request);
+      })
   );
 });

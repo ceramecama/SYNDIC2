@@ -99,19 +99,27 @@ class SyndicRepository {
                     stopAllUsersListening()
                 }
             } else {
-                // If doc doesn't exist, create it automatically (all users approved: true)
-                val email = auth.currentUser?.email ?: ""
-                db.collection("users").get().addOnCompleteListener { usersTask ->
-                    val isFirst = usersTask.isSuccessful && (usersTask.result?.isEmpty == true)
-                    val newAccount = UserAccount(
-                        uid = uid, 
-                        email = email, 
-                        role = if (isFirst) "admin" else "resident", 
-                        approved = isFirst
-                    )
-                    db.collection("users").document(uid).set(newAccount)
-                    _userAccount.value = newAccount
-                }
+                // Delay to allow registerUser to complete without being overwritten
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    if (auth.currentUser?.uid == uid) {
+                        db.collection("users").document(uid).get().addOnSuccessListener { checkSnap ->
+                            if (checkSnap == null || !checkSnap.exists()) {
+                                val email = auth.currentUser?.email ?: ""
+                                db.collection("users").get().addOnCompleteListener { usersTask ->
+                                    val isFirst = usersTask.isSuccessful && (usersTask.result?.isEmpty == true)
+                                    val newAccount = UserAccount(
+                                        uid = uid, 
+                                        email = email, 
+                                        role = if (isFirst) "admin" else "resident", 
+                                        approved = isFirst
+                                    )
+                                    db.collection("users").document(uid).set(newAccount)
+                                    _userAccount.value = newAccount
+                                }
+                            }
+                        }
+                    }
+                }, 2500)
             }
         }
     }
@@ -166,7 +174,40 @@ class SyndicRepository {
 
         if (bName.isBlank() || aName.isBlank()) return
 
-        val current = _appData.value
+        mainDocRef.get().addOnSuccessListener { snapshot ->
+            var current = if (snapshot != null && snapshot.exists()) {
+                snapshot.toObject(AppData::class.java) ?: AppData()
+            } else {
+                AppData()
+            }
+
+            if (current.buildings.isEmpty() && current.apartments.isEmpty()) {
+                db.collection("syndic_data").document("zaineb4").get().addOnSuccessListener { legSnap ->
+                    if (legSnap != null && legSnap.exists()) {
+                        val legData = legSnap.toObject(AppData::class.java) ?: AppData()
+                        if (legData.buildings.isNotEmpty() || legData.apartments.isNotEmpty()) {
+                            current = legData
+                        }
+                    }
+                    applyApartmentCreation(current, bName, aName, rName, rPhone)
+                }.addOnFailureListener {
+                    applyApartmentCreation(current, bName, aName, rName, rPhone)
+                }
+            } else {
+                applyApartmentCreation(current, bName, aName, rName, rPhone)
+            }
+        }.addOnFailureListener {
+            applyApartmentCreation(_appData.value, bName, aName, rName, rPhone)
+        }
+    }
+
+    private fun applyApartmentCreation(
+        current: AppData,
+        bName: String,
+        aName: String,
+        rName: String,
+        rPhone: String
+    ) {
         var building = current.buildings.find {
             it.name.trim().equals(bName, ignoreCase = true)
         }
@@ -205,6 +246,7 @@ class SyndicRepository {
         }
 
         val updated = current.copy(buildings = buildings, apartments = apartments)
+        _appData.value = updated
         saveData(updated)
     }
 
@@ -262,7 +304,6 @@ class SyndicRepository {
 
     fun startListening() {
         if (auth.currentUser == null) return
-        if (_userAccount.value?.approved == false) return
 
         if (listenerRegistration == null) {
             listenerRegistration = mainDocRef.addSnapshotListener { snapshot, error ->
