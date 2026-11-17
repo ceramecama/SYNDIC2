@@ -2200,9 +2200,8 @@
                 }
 
                 const docData = doc.exists ? doc.data() : null;
-                const hasBuildings = docData && Array.isArray(docData.buildings) && docData.buildings.length > 0;
 
-                if (hasBuildings) {
+                if (doc.exists && docData) {
                     data.buildings = docData.buildings || [];
                     data.apartments = docData.apartments || [];
                     data.expenses = docData.expenses || [];
@@ -2213,15 +2212,13 @@
                         if (data[key] && !Array.isArray(data[key])) data[key] = Object.values(data[key]);
                     });
 
-                    // DO NOT fix buildingId here (breaks Android)
-
                     if (!isLoaded) {
                         isLoaded = true;
                         init();
                     }
                     refreshCurrentView();
                 } else {
-                    // Check fallback doc "zaineb4" in case data is in legacy doc!
+                    // Check fallback doc "zaineb4" only if syndic1 doc genuinely does NOT exist!
                     try {
                         const legacyDoc = await db.collection("syndic_data").doc("zaineb4").get();
                         if (legacyDoc.exists) {
@@ -2250,12 +2247,7 @@
                         console.warn("Legacy check zaineb4 error:", errLegacy);
                     }
 
-                    if (doc.exists) {
-                        data.buildings = docData.buildings || [];
-                        data.apartments = docData.apartments || [];
-                        data.expenses = docData.expenses || [];
-                        data.payments = docData.payments || {};
-                    } else if (userAccount && userAccount.role === 'admin') {
+                    if (userAccount && userAccount.role === 'admin') {
                         saveData();
                     }
                     if (!isLoaded) {
@@ -2284,21 +2276,33 @@
         }
 
         function saveData() {
-            if (userAccount) {
+            if (!userAccount) {
+                console.warn("Unauthorized write attempt");
+                alert("⚠️ لا يمكن الحفظ: يرجى تسجيل الدخول أولاً.");
+                return;
+            }
+
+            try {
                 const toSave = {
-                    buildings: data.buildings.map(b => ({ ...b, id: Number(b.id) || 0 })),
-                    apartments: data.apartments.map(a => {
+                    buildings: (data.buildings || []).filter(Boolean).map(b => ({
+                        ...b,
+                        id: Number(b.id) || Date.now(),
+                        name: String(b.name || '').trim()
+                    })),
+                    apartments: (data.apartments || []).filter(Boolean).map(a => {
                         const cleanApt = { ...a };
-                        // Remove any undefined properties explicitly
                         Object.keys(cleanApt).forEach(key => cleanApt[key] === undefined && delete cleanApt[key]);
                         return {
                             ...cleanApt,
                             id: Number(cleanApt.id) || 0,
                             buildingId: Number(cleanApt.buildingId) || 0,
+                            name: String(cleanApt.name || '').trim(),
+                            residentName: String(cleanApt.residentName || '').trim(),
+                            residentPhone: String(cleanApt.residentPhone || '').trim(),
                             lastPaidTime: cleanApt.lastPaidTime ? (Number(cleanApt.lastPaidTime) || 0) : 0
                         };
                     }),
-                    expenses: data.expenses.map(e => {
+                    expenses: (data.expenses || []).filter(Boolean).map(e => {
                         const cleanExp = { ...e };
                         Object.keys(cleanExp).forEach(key => cleanExp[key] === undefined && delete cleanExp[key]);
                         return { ...cleanExp, id: Number(cleanExp.id) || 0 };
@@ -2307,23 +2311,34 @@
                 };
 
                 // Sanitize payments to remove undefined values if any
-                Object.keys(toSave.payments).forEach(key => {
-                    if (toSave.payments[key] === undefined || isNaN(toSave.payments[key])) {
-                        delete toSave.payments[key];
-                    }
+                if (toSave.payments && typeof toSave.payments === 'object') {
+                    Object.keys(toSave.payments).forEach(key => {
+                        if (toSave.payments[key] === undefined || isNaN(toSave.payments[key])) {
+                            delete toSave.payments[key];
+                        }
+                    });
+                } else {
+                    toSave.payments = {};
+                }
+
+                // Update syndic1 directly without merge:true so deleted keys/items are permanently removed
+                const p1 = db.collection("syndic_data").doc("syndic1").set(toSave);
+                // Also update legacy doc zaineb4 to prevent resurrecting deleted buildings
+                const p2 = db.collection("syndic_data").doc("zaineb4").set(toSave).catch(err => {
+                    console.warn("Legacy doc zaineb4 sync error:", err);
                 });
 
-                db.collection("syndic_data").doc("syndic1").set(toSave, { merge: true })
+                Promise.all([p1, p2])
                     .then(() => {
-                        console.log("Firestore Save Success");
+                        console.log("Firestore Save Success (both syndic1 & zaineb4)");
                     })
                     .catch(e => {
                         console.error("Firestore Save Error:", e);
                         alert("⚠️ فشل حفظ البيانات في السيرفر (Firestore): " + (e.message || "Permissions manquantes"));
                     });
-            } else {
-                console.warn("Unauthorized write attempt");
-                alert("⚠️ لا يمكن الحفظ: يرجى تسجيل الدخول أولاً.");
+            } catch (err) {
+                console.error("saveData local error:", err);
+                alert("⚠️ حدث خطأ أثناء تجهيز البيانات للحفظ: " + err.message);
             }
         }
 
@@ -3123,15 +3138,37 @@
 
         function deleteItem(id, type) {
             if (type === 'bld') {
-                const b = data.buildings.find(item => String(item.id) === String(id));
-                if (!b) return;
-                if (!confirm(`هل أنت متأكد من حذف العمارة "${b.name}" مع جميع شققها ومصاريفها؟`)) return;
-                // Delete building
-                data.buildings = data.buildings.filter(item => String(item.id) !== String(id));
-                // Delete apartments in this building
-                const aptsToDelete = data.apartments.filter(item => String(item.buildingId) === String(id));
+                const searchId = String(id).trim().toLowerCase();
+                const b = data.buildings.find(item => 
+                    String(item.id) === String(id) || 
+                    String(item.name || '').trim().toLowerCase() === searchId
+                );
+                if (!b) {
+                    alert("⚠️ لم يتم العثور على العمارة!");
+                    return;
+                }
+                const bName = b.name;
+                if (!confirm(`هل أنت متأكد من حذف العمارة "${bName}" مع جميع شققها ومصاريفها؟`)) return;
+
+                const bldId = String(b.id);
+                const cleanName = String(b.name || '').trim().toLowerCase();
+
+                // Delete building from data (clean up matching ID AND matching name to wipe duplicates)
+                data.buildings = data.buildings.filter(item => {
+                    const itemId = String(item.id);
+                    const itemName = String(item.name || '').trim().toLowerCase();
+                    return itemId !== bldId && itemId !== String(id) && itemName !== cleanName;
+                });
+
+                // Delete apartments in this building (matching buildingId by numeric ID or by name)
+                const aptsToDelete = data.apartments.filter(item => 
+                    String(item.buildingId) === bldId || 
+                    String(item.buildingId) === String(id) ||
+                    (cleanName !== '' && String(item.buildingId || '').trim().toLowerCase() === cleanName)
+                );
                 const aptIdsToDelete = aptsToDelete.map(item => String(item.id));
-                data.apartments = data.apartments.filter(item => String(item.buildingId) !== String(id));
+                data.apartments = data.apartments.filter(item => !aptsToDelete.includes(item));
+
                 // Delete payments for these apartments
                 Object.keys(data.payments || {}).forEach(k => {
                     const aptIdInKey = k.split('_')[0];
@@ -3139,14 +3176,22 @@
                         delete data.payments[k];
                     }
                 });
+
                 saveData();
                 renderBuildings();
+                alert(`✅ تم حذف العمارة "${bName}" بنجاح.`);
             } else if (type === 'apt') {
                 const a = data.apartments.find(item => String(item.id) === String(id));
-                if (!a) return;
-                if (!confirm(`هل أنت متأكد من حذف الشقة "${a.name}"؟`)) return;
+                if (!a) {
+                    alert("⚠️ لم يتم العثور على الشقة!");
+                    return;
+                }
+                const aName = a.name;
+                if (!confirm(`هل أنت متأكد من حذف الشقة "${aName}"؟`)) return;
+
                 // Delete apartment
                 data.apartments = data.apartments.filter(item => String(item.id) !== String(id));
+
                 // Delete payments for this apartment
                 Object.keys(data.payments || {}).forEach(k => {
                     const aptIdInKey = k.split('_')[0];
@@ -3154,8 +3199,10 @@
                         delete data.payments[k];
                     }
                 });
+
                 saveData();
                 renderApartments();
+                alert(`✅ تم حذف الشقة "${aName}" بنجاح.`);
             }
         }
 
@@ -3981,7 +4028,10 @@
                     payments: payList
                 };
 
-                await db.collection("syndic_data").doc("syndic1").set(payload, { merge: true });
+                await Promise.all([
+                    db.collection("syndic_data").doc("syndic1").set(payload),
+                    db.collection("syndic_data").doc("zaineb4").set(payload).catch(e => console.warn("zaineb4 autoCreate sync:", e))
+                ]);
                 console.log("autoCreateBuildingAndApartment SUCCESS:", bName, aName);
                 refreshCurrentView();
             } catch (err) {

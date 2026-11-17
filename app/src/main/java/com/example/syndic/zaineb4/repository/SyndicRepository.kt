@@ -315,23 +315,6 @@ class SyndicRepository {
                 if (snapshot != null && snapshot.exists()) {
                     try {
                         val data = snapshot.toObject(AppData::class.java) ?: AppData()
-                        if (data.buildings.isEmpty() && data.apartments.isEmpty()) {
-                            // Check legacy doc "zaineb4"
-                            db.collection("syndic_data").document("zaineb4").get().addOnSuccessListener { legSnap ->
-                                if (legSnap != null && legSnap.exists()) {
-                                    val legData = legSnap.toObject(AppData::class.java) ?: AppData()
-                                    if (legData.buildings.isNotEmpty() || legData.apartments.isNotEmpty()) {
-                                        val current = _appData.value
-                                        _appData.value = legData.copy(
-                                            chat = current.chat,
-                                            announcements = current.announcements
-                                        )
-                                        mainDocRef.set(legData)
-                                        return@addOnSuccessListener
-                                    }
-                                }
-                            }
-                        }
                         val current = _appData.value
                         _appData.value = data.copy(
                             chat = current.chat,
@@ -573,7 +556,12 @@ class SyndicRepository {
             announcements = emptyList()
         )
         mainDocRef.set(toSave)
-            .addOnSuccessListener { Log.d(TAG, "Main data saved successfully") }
+            .addOnSuccessListener { 
+                Log.d(TAG, "Main data saved successfully to syndic1")
+                // Synchronize legacy doc zaineb4 to prevent zombie resurrection of deleted items
+                db.collection("syndic_data").document("zaineb4").set(toSave)
+                    .addOnFailureListener { Log.w(TAG, "Legacy doc zaineb4 sync error: ${it.message}") }
+            }
             .addOnFailureListener { e -> Log.e(TAG, "Error saving main data", e) }
     }
 
@@ -681,8 +669,13 @@ class SyndicRepository {
 
     fun deleteBuilding(buildingId: Long) {
         val current = _appData.value
-        // Delete all apartments in this building
-        val apartmentsToDelete = current.apartments.filter { it.buildingId == buildingId }
+        val buildingToDelete = current.buildings.find { it.id == buildingId }
+        val bldName = buildingToDelete?.name?.trim()?.lowercase() ?: ""
+
+        // Delete all apartments in this building (matching numeric ID or matching building name)
+        val apartmentsToDelete = current.apartments.filter { 
+            it.buildingId == buildingId || (bldName.isNotBlank() && it.buildingId.toString() == bldName)
+        }
         val apartmentIds = apartmentsToDelete.map { it.id.toString() }
 
         // Remove payments for these apartments
@@ -691,10 +684,13 @@ class SyndicRepository {
         }
 
         val updated = current.copy(
-            buildings = current.buildings.filter { it.id != buildingId },
-            apartments = current.apartments.filter { it.buildingId != buildingId },
+            buildings = current.buildings.filter { 
+                it.id != buildingId && (bldName.isBlank() || it.name.trim().lowercase() != bldName)
+            },
+            apartments = current.apartments.filterNot { apartmentsToDelete.contains(it) },
             payments = updatedPayments
         )
+        _appData.value = updated
         saveData(updated)
     }
 
